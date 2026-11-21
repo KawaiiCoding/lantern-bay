@@ -4,11 +4,11 @@ extends Node
 ## labelled map (closes with a tap / Escape). Land is sampled once from Island.is_walkable,
 ## so it always matches the real island. Screen up = away from the camera (-z).
 
-const SAMPLE := 72                     # land grid resolution
+const SAMPLE := 96                     # land grid resolution
 const SMALL := 124.0                   # small map size in px
 const PLACES := [
-	["home", "Home"], ["shop", "Pip's Shop"], ["board", "Board"], ["plaza", "Plaza"],
-	["pier_end", "Pier"], ["lighthouse", "Lighthouse"], ["hill", "Hill"], ["beach", "Beach"],
+	["home", "Home", "house"], ["shop", "Pip's Shop", "shop"], ["board", "Board", "board"], ["plaza", "Plaza", "fountain"],
+	["pier_end", "Pier", "fish"], ["lighthouse", "Lighthouse", "tower"], ["hill", "Hill", "hill"], ["beach", "Beach", "shell"],
 ]
 
 var main: Node
@@ -31,6 +31,8 @@ func setup(m: Node) -> void:
 	_small.mouse_filter = Control.MOUSE_FILTER_STOP
 	_small.gui_input.connect(_on_small_input)
 	_layer.add_child(_small)
+	if "map=1" in OS.get_cmdline_user_args():   # test hook: open the big map right away
+		get_tree().create_timer(1.5).timeout.connect(_open_big)
 
 func _build_land() -> ImageTexture:
 	var img := Image.create(SAMPLE, SAMPLE, false, Image.FORMAT_RGBA8)
@@ -41,15 +43,16 @@ func _build_land() -> ImageTexture:
 			var x := _bounds.position.x + (i + 0.5) / SAMPLE * _bounds.size.x
 			var z := _bounds.position.y + (j + 0.5) / SAMPLE * _bounds.size.y
 			var c := sea
-			if isl and isl.has_method("is_walkable"):
-				var w: bool = isl.is_walkable(Vector3(x, 0, z))
+			if isl and isl.has_method("dist_in"):
+				# smooth island shape: inside the shoreline = land (props don't punch holes)
+				var di: float = isl.dist_in(x, z)
 				var gy: float = isl.ground_y(x, z) if isl.has_method("ground_y") else 0.0
-				if w or gy > 0.5:
-					c = hill if gy > 0.5 else grass
-				else:
-					# a soft sand rim where land meets sea
-					for d in [Vector2(1.2, 0), Vector2(-1.2, 0), Vector2(0, 1.2), Vector2(0, -1.2)]:
-						if isl.is_walkable(Vector3(x + d.x, 0, z + d.y)): c = sand; break
+				var on_pier: bool = isl.has_method("is_walkable") and di < 0.0 and isl.is_walkable(Vector3(x, 0, z))
+				if di > 1.6: c = hill if gy > 0.5 else grass
+				elif di > 0.0: c = sand
+				elif on_pier: c = Color("e2cb9a")   # tide flats / pier: wet sand
+			elif isl and isl.has_method("is_walkable") and isl.is_walkable(Vector3(x, 0, z)):
+				c = grass
 			img.set_pixel(i, j, c)
 	return ImageTexture.create_from_image(img)
 
@@ -119,24 +122,44 @@ class MapView extends Control:
 		sb.border_color = Style.INK; sb.set_border_width_all(3)
 		draw_style_box(sb, r)
 		var inner := r.grow(-4)
+		texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 		draw_texture_rect(host.land(), inner, false)
 		var m = host.main
 		if m == null: return
-		# places
+		# places: a small drawn icon each; on the big map a label placed where it doesn't overlap anything
 		var font := ThemeDB.fallback_font
+		var taken: Array[Rect2] = []
+		var marks := []
 		for pl in host.PLACES:
 			var p: Vector3 = m.spot(pl[0])
 			if p == Vector3.ZERO: continue
 			var q: Vector2 = inner.position + host.to_map(p) * inner.size
-			draw_circle(q, 6.0 if big else 3.5, Style.CREAM)
-			draw_arc(q, 6.0 if big else 3.5, 0, TAU, 16, Style.INK, 2.0 if big else 1.5)
-			if big:
-				var fs := 17
-				var w := font.get_string_size(pl[1], HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
-				var at := q + Vector2(-w / 2.0, -12)
-				at.x = clampf(at.x, inner.position.x + 4, inner.end.x - w - 4)
-				draw_string_outline(font, at, pl[1], HORIZONTAL_ALIGNMENT_LEFT, -1, fs, 5, Style.CREAM)
-				draw_string(font, at, pl[1], HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Style.INK)
+			var ir := 13.0 if big else 6.5
+			marks.append([q, pl, ir])
+			taken.append(Rect2(q - Vector2(ir, ir), Vector2(ir, ir) * 2))
+		for mk in marks:
+			_icon(mk[0], mk[2], mk[1][2])
+		if big:
+			var fs := 16
+			for mk in marks:
+				var q: Vector2 = mk[0]; var ir: float = mk[2]; var text: String = mk[1][1]
+				var ts := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs)
+				var box := Vector2(ts.x + 10, ts.y + 4)
+				var tries := [Vector2(-box.x / 2, -ir - box.y - 2), Vector2(-box.x / 2, ir + 2),
+					Vector2(ir + 4, -box.y / 2), Vector2(-ir - 4 - box.x, -box.y / 2)]
+				for off in tries:
+					var r2 := Rect2(q + off, box)
+					if not inner.grow(-2).encloses(r2): continue
+					var clash := false
+					for t in taken:
+						if t.intersects(r2): clash = true; break
+					if clash: continue
+					taken.append(r2)
+					var lb := StyleBoxFlat.new(); lb.bg_color = Color(Style.CREAM, 0.92); lb.set_corner_radius_all(6)
+					lb.border_color = Color(Style.INK, 0.5); lb.set_border_width_all(1)
+					draw_style_box(lb, r2)
+					draw_string(font, r2.position + Vector2(5, ts.y - 1), text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Style.INK)
+					break
 		# goal star
 		var g: Vector3 = host.goal_target()
 		if g != Vector3.ZERO:
@@ -159,6 +182,39 @@ class MapView extends Control:
 			draw_colored_polygon(tp, Style.PRIMARY)
 			tp.append(tp[0])
 			draw_polyline(tp, Style.CREAM, 2.0)
+
+	## Tiny readable map icons, drawn in a cream disc with an ink ring.
+	func _icon(c: Vector2, r: float, kind: String) -> void:
+		draw_circle(c, r, Style.CREAM)
+		draw_arc(c, r, 0, TAU, 20, Style.INK, 1.6 if r < 8 else 2.2)
+		var k := r * 0.55
+		var ink := Style.INK
+		match kind:
+			"house":
+				draw_colored_polygon(PackedVector2Array([c + Vector2(-k, 0), c + Vector2(0, -k), c + Vector2(k, 0)]), Color("e8746a"))
+				draw_rect(Rect2(c + Vector2(-k * 0.7, 0), Vector2(k * 1.4, k * 0.8)), Color("f4dcc4"))
+			"shop":
+				draw_rect(Rect2(c + Vector2(-k * 0.8, -k * 0.4), Vector2(k * 1.6, k * 1.2)), Color("e0a64a"))
+				draw_arc(c + Vector2(0, -k * 0.4), k * 0.45, PI, TAU, 10, ink, 1.4)
+			"board":
+				draw_rect(Rect2(c + Vector2(-k * 0.8, -k * 0.7), Vector2(k * 1.6, k)), Color("c98a5a"))
+				draw_line(c + Vector2(0, k * 0.3), c + Vector2(0, k * 0.9), ink, 1.5)
+			"fountain":
+				draw_circle(c, k * 0.8, Color("8fcde0"))
+				draw_circle(c, k * 0.3, Color("fffaf2"))
+			"fish":
+				draw_colored_polygon(PackedVector2Array([c + Vector2(-k, 0), c + Vector2(-k * 0.1, -k * 0.55), c + Vector2(k * 0.6, 0), c + Vector2(-k * 0.1, k * 0.55)]), Color("6fb4d6"))
+				draw_colored_polygon(PackedVector2Array([c + Vector2(k * 0.5, 0), c + Vector2(k, -k * 0.45), c + Vector2(k, k * 0.45)]), Color("6fb4d6"))
+			"tower":
+				draw_rect(Rect2(c + Vector2(-k * 0.35, -k * 0.6), Vector2(k * 0.7, k * 1.5)), Color("e8746a"))
+				draw_rect(Rect2(c + Vector2(-k * 0.35, -k * 0.2), Vector2(k * 0.7, k * 0.35)), Color("fffaf2"))
+				draw_circle(c + Vector2(0, -k * 0.75), k * 0.3, Color("f2c14e"))
+			"hill":
+				draw_colored_polygon(PackedVector2Array([c + Vector2(-k, k * 0.6), c + Vector2(-k * 0.1, -k * 0.7), c + Vector2(k, k * 0.6)]), Color("7fae73"))
+			"shell":
+				draw_arc(c + Vector2(0, k * 0.4), k * 0.85, PI, TAU, 12, Color("e8a0a0"), k * 0.5)
+			_:
+				draw_circle(c, k * 0.4, ink)
 
 	func _star(c: Vector2, rad: float, col: Color) -> void:
 		var pts := PackedVector2Array()

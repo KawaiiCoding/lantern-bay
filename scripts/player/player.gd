@@ -90,6 +90,7 @@ var _test := false
 var _demo := ""
 var _demo_t := 0.0
 var _demo_log_prompt := ""
+var _wa := {}                      # walkabout self-test state (-- test=walkabout)
 
 # ---------------------------------------------------------------- build
 func _ready() -> void:
@@ -139,6 +140,7 @@ func _ready() -> void:
 	var args := _args()
 	_test = args.get("test", "") == "player"
 	if _test: _demo = args.get("demo", "walk")
+	if args.get("test", "") == "walkabout": _wa = {"on": true, "step": float(args.get("step", "2.5"))}
 
 ## Collect the tagged parts of a Shiba (meta "part") that we animate.
 func _scan_bear(b: Node3D, _with_limbs := true) -> void:
@@ -297,6 +299,7 @@ func setup(m) -> void:
 	_rig.rotation.y = _yaw
 	_cam_focus = global_position + Vector3(0, CAM_FOCUS_UP, 0)
 	_place_camera(0.0, true)
+	if not _wa.is_empty(): _walkabout_begin()
 
 # ---------------------------------------------------------------- contract API
 func speed_ratio() -> float:
@@ -413,6 +416,7 @@ func _input_move() -> Vector2:
 	return InputBridge.move
 
 func _physics_process(dt: float) -> void:
+	if not _wa.is_empty(): _walkabout_step(dt)
 	var mv := _input_move()
 	if busy or _hopping or GameState.paused: mv = Vector2.ZERO
 	_stick = minf(mv.length(), 1.0)
@@ -832,3 +836,102 @@ func _build_test_world() -> void:
 		n.prompt = d[0]; n.color = d[2]; n.interact_priority = d[3]
 		n.position = d[1]
 		root.add_child.call_deferred(n)
+
+# ---------------------------------------------------------------- self-test (-- test=walkabout)
+## Walks 8 directions (0.6 s each) from every walkable grid point via InputBridge.touch_move and logs
+## any run where speed stays under 20% of expected while the path ahead is walkable and free.
+## Run fast: `godot --headless --fixed-fps 60 --path . -- test=walkabout [step=2.5]`.
+const WA_DIRS := [Vector2(0, -1), Vector2(1, -1), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1), Vector2(-1, 1), Vector2(-1, 0), Vector2(-1, -1)]
+const WA_RUN := 0.6
+const WA_MEASURE := 0.25           # measure after accelerating
+
+func _walkabout_begin() -> void:
+	var isl = main.get("island") if is_instance_valid(main) else null
+	var pts: Array[Vector3] = []
+	if is_instance_valid(isl) and isl.has_method("is_walkable"):
+		var st: float = maxf(0.5, float(_wa.get("step", 2.5)))
+		var x := -60.0
+		while x <= 60.0:
+			var z := -60.0
+			while z <= 60.0:
+				var p := Vector3(x, 0, z)
+				if isl.is_walkable(p): pts.append(p)
+				z += st
+			x += st
+	_wa["pts"] = pts; _wa["i"] = 0; _wa["d"] = 0; _wa["t"] = -1.0; _wa["stuck"] = []; _wa["runs"] = 0; _wa["open"] = 0
+	print("[walkabout] %d walkable grid points" % pts.size())
+
+func _wa_ground(p: Vector3) -> Vector3:
+	var isl = main.get("island") if is_instance_valid(main) else null
+	if is_instance_valid(isl) and isl.has_method("ground_y"): p.y = isl.ground_y(p.x, p.z)
+	return p
+
+## Camera-relative stick -> world direction (same mapping as _physics_process).
+func _wa_world_dir(mv: Vector2) -> Vector3:
+	var cb := camera.global_transform.basis
+	var right := Vector3(cb.x.x, 0, cb.x.z).normalized()
+	var fwd := Vector3(-cb.z.x, 0, -cb.z.z).normalized()
+	return (right * mv.x + fwd * (-mv.y)).normalized()
+
+## Path ahead (body width included) is walkable for the whole run distance.
+func _wa_open_ahead(p: Vector3, dir: Vector3) -> bool:
+	var isl = main.get("island")
+	var side := Vector3(-dir.z, 0, dir.x)
+	var d := 0.3
+	while d <= WALK_SPEED * WA_RUN + 0.6:
+		for o in [-0.45, 0.0, 0.45]:
+			if not isl.is_walkable(p + dir * d + side * o): return false
+		d += 0.25
+	return true
+
+func _walkabout_step(dt: float) -> void:
+	var pts: Array = _wa.get("pts", [])
+	var i: int = _wa["i"]
+	if i >= pts.size():
+		InputBridge.touch_move = Vector2.ZERO
+		if not _wa.has("done"):
+			_wa["done"] = true
+			var stuck: Array = _wa["stuck"]
+			print("[walkabout] runs=%d open=%d stuck=%d" % [_wa["runs"], _wa["open"], stuck.size()])
+			for line in stuck: print("[walkabout] STUCK ", line)
+			print("[walkabout] PASS no stuck points" if stuck.is_empty() else "[walkabout] FAIL stuck points found")
+			get_tree().quit()
+		return
+	if riding or sitting or busy:
+		if sitting: sit(false)
+		if riding: riding = false; _set_riding_visual(false); _update_shape()
+		if busy: set_busy(false)
+	var p: Vector3 = pts[i]
+	var mv: Vector2 = WA_DIRS[int(_wa["d"])].normalized()
+	if _wa["t"] < 0.0:   # start a run: teleport back to the grid point at rest
+		global_position = _wa_ground(p) + Vector3(0, 0.02, 0)
+		velocity = Vector3.ZERO
+		_wa["t"] = 0.0; _wa["hits"] = {}; _wa["from"] = Vector3.ZERO
+	InputBridge.touch_move = mv
+	var t: float = _wa["t"]
+	if t >= WA_MEASURE and _wa["from"] == Vector3.ZERO: _wa["from"] = global_position
+	for k in get_slide_collision_count():
+		var c := get_slide_collision(k)
+		if c.get_normal().y > 0.7: continue   # floor
+		var col := c.get_collider()
+		var nm := "?"
+		if col is Node:
+			nm = str((col as Node).name)
+			var sh = c.get_collider_shape()
+			if sh is Node3D: nm += "/" + str((sh as Node3D).name) + "@" + str(((sh as Node3D).global_position * 10.0).round() / 10.0)
+			if sh is CollisionShape3D and (sh as CollisionShape3D).shape: nm += ":" + (sh as CollisionShape3D).shape.get_class()
+		_wa["hits"][nm] = true
+	_wa["t"] = t + dt
+	if _wa["t"] < WA_RUN: return
+	var moved := Vector2(global_position.x - _wa["from"].x, global_position.z - _wa["from"].z).length()
+	var expect := WALK_SPEED * (WA_RUN - WA_MEASURE)
+	_wa["runs"] += 1
+	var dir := _wa_world_dir(mv)
+	if _wa_open_ahead(p, dir):
+		_wa["open"] += 1
+		if moved < expect * 0.2:
+			_wa["stuck"].append("at (%.1f, %.1f) dir (%.2f, %.2f) moved %.2f m of %.2f; hit %s" % [p.x, p.z, dir.x, dir.z, moved, expect, str(_wa["hits"].keys())])
+	_wa["t"] = -1.0
+	_wa["d"] = int(_wa["d"]) + 1
+	if _wa["d"] >= WA_DIRS.size():
+		_wa["d"] = 0; _wa["i"] = i + 1
