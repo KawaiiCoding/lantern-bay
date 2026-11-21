@@ -907,7 +907,7 @@ func _walkabout_begin() -> void:
 				if isl.is_walkable(p): pts.append(p)
 				z += st
 			x += st
-	_wa["pts"] = pts; _wa["i"] = 0; _wa["d"] = 0; _wa["t"] = -1.0; _wa["stuck"] = []; _wa["runs"] = 0; _wa["open"] = 0
+	_wa["pts"] = pts; _wa["i"] = 0; _wa["d"] = 0; _wa["t"] = -1.0; _wa["stuck"] = []; _wa["air"] = {}; _wa["runs"] = 0; _wa["open"] = 0
 	print("[walkabout] %d walkable grid points" % pts.size())
 
 func _wa_ground(p: Vector3) -> Vector3:
@@ -943,7 +943,10 @@ func _walkabout_step(dt: float) -> void:
 			var stuck: Array = _wa["stuck"]
 			print("[walkabout] runs=%d open=%d stuck=%d" % [_wa["runs"], _wa["open"], stuck.size()])
 			for line in stuck: print("[walkabout] STUCK ", line)
+			var air: Dictionary = _wa["air"]
+			for line in air.values(): print("[walkabout] AIR ", line)
 			print("[walkabout] PASS no stuck points" if stuck.is_empty() else "[walkabout] FAIL stuck points found")
+			print("[walkabout] PASS never stands in the air" if air.is_empty() else "[walkabout] FAIL stood above the ground %d times" % air.size())
 			get_tree().quit()
 		return
 	if riding or sitting or busy:
@@ -973,6 +976,21 @@ func _walkabout_step(dt: float) -> void:
 			if sh is Node3D: nm += "/" + str((sh as Node3D).name) + "@" + str(((sh as Node3D).global_position * 10.0).round() / 10.0)
 			if sh is CollisionShape3D and (sh as CollisionShape3D).shape: nm += ":" + (sh as CollisionShape3D).shape.get_class()
 		_wa["hits"][nm] = true
+	# "you cannot stand in the air": on the floor but clearly above the island's ground height
+	if is_on_floor() and t > 0.1:
+		var gy := _wa_ground(global_position).y
+		if global_position.y - gy > 0.15:
+			var fc := "?"
+			for k in get_slide_collision_count():
+				var c := get_slide_collision(k)
+				if c.get_normal().y > 0.7:
+					var col := c.get_collider()
+					var sh = c.get_collider_shape()
+					fc = (str((col as Node).name) if col is Node else "?") + "/" + (str((sh as Node).name) if sh is Node else "?")
+					if sh is CollisionShape3D and (sh as CollisionShape3D).shape: fc += ":" + (sh as CollisionShape3D).shape.get_class() + "@" + str(((sh as Node3D).global_position * 10.0).round() / 10.0)
+			var key := "%.0f,%.0f" % [global_position.x, global_position.z]
+			if not _wa["air"].has(key):
+				_wa["air"][key] = "at (%.2f, %.2f, %.2f) ground %.2f on %s (from grid (%.1f, %.1f))" % [global_position.x, global_position.y, global_position.z, gy, fc, p.x, p.z]
 	_wa["t"] = t + dt
 	if _wa["t"] < WA_RUN: return
 	var moved := Vector2(global_position.x - _wa["from"].x, global_position.z - _wa["from"].z).length()

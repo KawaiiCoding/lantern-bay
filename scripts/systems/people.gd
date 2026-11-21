@@ -78,6 +78,31 @@ func _late_setup() -> void:
 		_run_test()
 	else:
 		_morning(false)
+		if _arg("talk") != "": _dev_talk(_arg("talk"))
+
+## Dev: `-- intro=0 talk=moss shot=/tmp/x.png wait=4` walks Mocha up to a person and opens their talk.
+func _dev_talk(id: String) -> void:
+	var n := node(id)
+	var pl := get_player()
+	if n == null or pl == null: return
+	await get_tree().create_timer(1.0).timeout
+	if not is_instance_valid(n) or not is_instance_valid(pl): return
+	var p := n.global_position + Vector3(0, 0, 1.6)
+	var isl := _island()
+	if isl and isl.has_method("is_walkable"):
+		for k in 8:
+			var q := n.global_position + Vector3(cos(PI * 0.5 + k * TAU / 8.0), 0, sin(PI * 0.5 + k * TAU / 8.0)) * 1.6
+			if isl.is_walkable(q): p = q; break
+	p.y = ground_y(p) + 0.05
+	pl.global_position = p
+	if pl.has_method("face"): pl.face(n.global_position)
+	n.face_point(p)
+	await get_tree().create_timer(0.6).timeout
+	print("dev talk prompt: ", prompt_for(id))
+	talk(id)
+	for i in int(_arg("talk_next")):   # `talk_next=1` turns pages (to see the tip page)
+		await get_tree().create_timer(0.8).timeout
+		if is_instance_valid(dialogue) and dialogue.is_open(): dialogue._next()
 
 func _spawn_all() -> void:
 	var parent: Node = main if main is Node3D else self
@@ -187,7 +212,20 @@ func _offset(id: String, spot: String) -> Vector3:
 	if spot == "shop_counter": return Vector3.ZERO
 	var h := float(abs(hash(id + spot)) % 1000) / 1000.0
 	var a := h * TAU
-	return Vector3(cos(a), 0, sin(a)) * (1.3 + h * 0.7)
+	var r := 1.3 + h * 0.7
+	# stay on walkable ground (the pier is narrow: never stand in the sea next to it)
+	var isl := _island()
+	if isl == null or not isl.has_method("is_walkable"): return Vector3(cos(a), 0, sin(a)) * r
+	var base := _spot_pos(spot)
+	for rr in [r, r * 0.7, 1.0]:
+		for k in 8:
+			var aa := a + k * TAU / 8.0
+			var o: Vector3 = Vector3(cos(aa), 0, sin(aa)) * float(rr)
+			if _walkable(isl, base + o) and _walkable(isl, base + o * 1.25): return o
+	return Vector3(cos(a), 0, sin(a)) * r
+
+func _walkable(isl: Node, p: Vector3) -> bool:
+	return bool(isl.is_walkable(p))
 
 func _shop_open_now(id: String) -> bool:
 	var town := _town()
