@@ -38,7 +38,7 @@ func _teleport(p: Node3D, pos: Vector3) -> void:
 	if p is CharacterBody3D: p.velocity = Vector3.ZERO
 
 func _set_time(slot: String, minute_in_slot := 0.0) -> void:
-	var start := {"morning": 6.0 * 60.0, "afternoon": 12.0 * 60.0, "evening": 18.0 * 60.0, "night": 22.0 * 60.0}
+	var start = {"morning": 6.0 * 60.0, "afternoon": 12.0 * 60.0, "evening": 18.0 * 60.0, "night": 22.0 * 60.0}
 	gs.minute = float(start[slot]) + minute_in_slot
 
 ## First day (from 1) whose weather is `wx`.
@@ -56,14 +56,14 @@ func lowest_point(root: Node) -> Dictionary:
 		var box: AABB = mi.global_transform * mi.get_aabb()
 		cands.append([box.position.y, mi])
 	cands.sort_custom(func(a, b): return a[0] < b[0])
-	var best := INF
+	var best = INF
 	var best_mesh: Node = null
 	for c in cands:
 		if c[0] >= best: break
 		var mi: MeshInstance3D = c[1]
 		var faces: PackedVector3Array = mi.mesh.get_faces()
 		var xf: Transform3D = mi.global_transform
-		var low := c[0] if faces.is_empty() else INF
+		var low = c[0] if faces.is_empty() else INF
 		for v in faces:
 			var y: float = (xf * v).y
 			if y < low: low = y
@@ -74,8 +74,8 @@ func lowest_point(root: Node) -> Dictionary:
 func _collect_meshes(n: Node, out: Array) -> void:
 	for c in n.get_children():
 		if c is MeshInstance3D and c.mesh != null and c.is_visible_in_tree():
-			var skip_it := false
-			var nm := str(c.name).to_lower()
+			var skip_it = false
+			var nm = str(c.name).to_lower()
 			if nm.contains("shadow") or nm.contains("blob") or nm.contains("outline_only"): skip_it = true
 			elif c.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF and c.get_aabb().size.y * absf(c.global_transform.basis.get_scale().y) < 0.05: skip_it = true
 			if not skip_it: out.append(c)
@@ -88,15 +88,15 @@ func _surface_candidates(n: Node3D, x: float, z: float) -> Array:
 	for key in ["surface_y", "seat_y"]:
 		var v = n.get(key)
 		if typeof(v) == TYPE_FLOAT and not is_nan(v) and v != 0.0: out.append(["own " + key, float(v)])
-	var gy := _ground_y(x, z)
+	var gy = _ground_y(x, z)
 	if not is_nan(gy): out.append(["island.ground_y", gy])
-	var space := n.get_world_3d().direct_space_state
-	var q := PhysicsRayQueryParameters3D.create(Vector3(x, 30.0, z), Vector3(x, -10.0, z))
+	var space = n.get_world_3d().direct_space_state
+	var q = PhysicsRayQueryParameters3D.create(Vector3(x, 30.0, z), Vector3(x, -10.0, z))
 	var ex: Array[RID] = []
 	for c in r.main.find_children("*", "CollisionObject3D", true, false):
 		if c is CharacterBody3D: ex.append(c.get_rid())
 	q.exclude = ex
-	var hit := space.intersect_ray(q)
+	var hit = space.intersect_ray(q)
 	if not hit.is_empty(): out.append(["ray", float(hit.position.y)])
 	return out
 
@@ -106,7 +106,7 @@ func characters() -> Array:
 	var p: Node = r.part("player")
 	if p != null: out.append({"label": "player", "node": p})
 	for n in _nodes_by_script("cats/cat_actor.gd"): out.append({"label": str(n.name), "node": n})
-	var seen := {}
+	var seen = {}
 	for n in r.main.get_tree().get_nodes_in_group("people"):
 		if n is Node3D and r.main.is_ancestor_of(n):
 			out.append({"label": "person:" + str(n.name), "node": n}); seen[n] = true
@@ -143,7 +143,7 @@ func t_02_reboot_is_clean() -> void:
 	var m2 = r.main
 	ok(is_instance_valid(m2) and m2.get_child_count() > 0, "main has no children after a reboot")
 	# the old instance is gone: only one Main in the tree
-	var mains := 0
+	var mains = 0
 	for c in r.root.get_children():
 		if c.get_script() != null and str(c.get_script().resource_path).ends_with("scripts/main.gd"): mains += 1
 	eq(mains, 1, "number of Main nodes after rebooting twice")
@@ -173,13 +173,13 @@ func t_10_island_spots() -> void:
 	await r.ensure_main()
 	if not _need(["island"]): return
 	var isl: Node = r.part("island")
-	var pts := {}
+	var pts = {}
 	for n in SPOT_NAMES:
 		var p: Vector3 = isl.spot(n)
 		if p == Vector3.ZERO: fail("island.spot('%s') is Vector3.ZERO (missing spot)" % n); continue
 		if is_nan(p.x) or is_nan(p.y) or is_nan(p.z) or is_inf(p.x) or is_inf(p.z): fail("island.spot('%s') is not finite: %s" % [n, str(p)]); continue
 		pts[n] = p
-	var names := pts.keys()
+	var names = pts.keys()
 	for i in names.size():
 		for j in range(i + 1, names.size()):
 			var d: float = pts[names[i]].distance_to(pts[names[j]])
@@ -191,19 +191,19 @@ func t_10_island_spots() -> void:
 	if isl.has_method("ground_y"):
 		for n in pts.keys():
 			var p2: Vector3 = pts[n]
-			var gy := _ground_y(p2.x, p2.z)
+			var gy = _ground_y(p2.x, p2.z)
 			if absf(gy - p2.y) > 0.25: warn("spot '%s' y=%.2f but ground_y there is %.2f" % [n, p2.y, gy])
 	else:
 		warn("island has no ground_y(x, z) (contract)")
 	if isl.has_method("random_beach_point") and isl.has_method("random_flats_point"):
-		var rng := RandomNumberGenerator.new(); rng.seed = 7
+		var rng = RandomNumberGenerator.new(); rng.seed = 7
 		for fn in ["random_beach_point", "random_flats_point"]:
-			var distinct := {}
+			var distinct = {}
 			for i in 25:
 				var q: Vector3 = isl.call(fn, rng)
 				if is_nan(q.x) or is_nan(q.z) or q == Vector3.ZERO: fail("%s returned %s" % [fn, str(q)]); break
 				distinct[Vector2(snappedf(q.x, 0.1), snappedf(q.z, 0.1))] = true
-				var gyy := _ground_y(q.x, q.z)
+				var gyy = _ground_y(q.x, q.z)
 				if not is_nan(gyy) and absf(gyy - q.y) > 0.3: warn("%s: y=%.2f but ground_y=%.2f at %s" % [fn, q.y, gyy, str(q)]); break
 			ok(distinct.size() >= 10, "%s gives only %d distinct points in 25 draws" % [fn, distinct.size()])
 	else:
@@ -220,8 +220,8 @@ func t_11_spots_have_ground() -> void:
 	for n in SPOT_NAMES:
 		var p: Vector3 = isl.spot(n)
 		if p == Vector3.ZERO: continue
-		var q := PhysicsRayQueryParameters3D.create(p + Vector3(0, 3, 0), p + Vector3(0, -3, 0))
-		var hit := space.intersect_ray(q)
+		var q = PhysicsRayQueryParameters3D.create(p + Vector3(0, 3, 0), p + Vector3(0, -3, 0))
+		var hit = space.intersect_ray(q)
 		if hit.is_empty(): bad.append("%s (no collider under %s)" % [n, str(p)])
 		elif absf(float(hit.position.y) - p.y) > 0.6: bad.append("%s (collider at y=%.2f, spot y=%.2f)" % [n, hit.position.y, p.y])
 	ok(bad.is_empty(), "spots without walkable ground: " + "; ".join(bad))
@@ -232,8 +232,8 @@ func t_12_gates_follow_lanterns() -> void:
 	if not _need(["island"]): return
 	var isl: Node = r.part("island")
 	if not isl.has_method("is_walkable") or not isl.has_method("refresh_unlocks"): skip("island has no is_walkable/refresh_unlocks"); return
-	var gates := data_dict("SPOT_LANTERN")
-	var before := {}
+	var gates = data_dict("SPOT_LANTERN")
+	var before = {}
 	for sp in gates.keys():
 		var p: Vector3 = isl.spot(str(sp))
 		if p == Vector3.ZERO: continue
@@ -246,7 +246,7 @@ func t_12_gates_follow_lanterns() -> void:
 		var p2: Vector3 = isl.spot(str(sp))
 		ok(isl.is_walkable(p2), "spot '%s' should be walkable once the %s lantern is lit" % [str(sp), str(gates[sp])])
 	if not before.is_empty():
-		var closed := 0
+		var closed = 0
 		for sp in before.keys():
 			if not before[sp]: closed += 1
 		if closed == 0: warn("no gated spot was closed before its lantern was lit (is_walkable returns true everywhere?)")
@@ -260,13 +260,13 @@ func t_20_player_spawns_on_ground() -> void:
 	if not _need(["player"]): return
 	await r.wait_frames(40)
 	var p: CharacterBody3D = r.part("player")
-	var pos := p.global_position
+	var pos = p.global_position
 	ok(not is_nan(pos.x) and not is_nan(pos.y), "player position is NaN")
 	ok(pos.y > -2.0, "player fell through the world (y=%.2f)" % pos.y)
 	ok(p.is_on_floor(), "player is not on the floor after 40 frames (y=%.2f)" % pos.y)
-	var gy := _ground_y(pos.x, pos.z)
+	var gy = _ground_y(pos.x, pos.z)
 	if not is_nan(gy): ok(absf(pos.y - gy) < 0.3, "player y=%.2f but ground_y=%.2f" % [pos.y, gy])
-	var sp := _spot("spawn")
+	var sp = _spot("spawn")
 	if sp != Vector3.ZERO: ok(Vector2(pos.x - sp.x, pos.z - sp.z).length() < 6.0, "player starts %.1f m from the spawn spot" % Vector2(pos.x - sp.x, pos.z - sp.z).length())
 	ok(not bool(p.get("busy")), "player starts busy")
 	ok(not bool(p.get("riding")) and not bool(p.get("sitting")), "player starts riding or sitting")
@@ -277,17 +277,17 @@ func t_21_player_moves_with_joystick() -> void:
 	await r.ensure_main()
 	if not _need(["player"]): return
 	var p: CharacterBody3D = r.part("player")
-	var start := _spot("spawn")
-	var best := 0.0
-	var best_dir := Vector2.ZERO
+	var start = _spot("spawn")
+	var best = 0.0
+	var best_dir = Vector2.ZERO
 	for dir in [Vector2(0, -1), Vector2(1, 0), Vector2(0, 1), Vector2(-1, 0)]:
 		if start != Vector3.ZERO: _teleport(p, start + Vector3(0, 0.1, 0))
 		await r.wait_frames(10)
-		var a := p.global_position
+		var a = p.global_position
 		ib.touch_move = dir
 		await r.wait_sec(1.0)
 		ib.touch_move = Vector2.ZERO
-		var d := Vector2(p.global_position.x - a.x, p.global_position.z - a.z).length()
+		var d = Vector2(p.global_position.x - a.x, p.global_position.z - a.z).length()
 		if d > best: best = d; best_dir = dir
 		if best > 2.0: break
 	ok(best > 1.5, "player barely moves with touch_move set for 1 s (best %.2f m; walk speed is ~4.2 m/s)" % best)
@@ -313,7 +313,7 @@ func t_22_player_ride_toggle() -> void:
 	await r.ensure_main()
 	if not _need(["player"]): return
 	var p: CharacterBody3D = r.part("player")
-	var sp := _spot("spawn")
+	var sp = _spot("spawn")
 	if sp != Vector3.ZERO: _teleport(p, sp + Vector3(0, 0.1, 0))
 	await r.wait_frames(10)
 	ib.ride_pressed.emit()
@@ -336,11 +336,11 @@ func t_23_interactables_follow_contract() -> void:
 	if not _need(["player"]): return
 	await r.wait_frames(10)
 	var p: Node = r.part("player")
-	var nodes := r.main.get_tree().get_nodes_in_group("interactable")
+	var nodes = r.main.get_tree().get_nodes_in_group("interactable")
 	if nodes.is_empty(): skip("no interactables in the world yet"); return
-	var kinds := {}
+	var kinds = {}
 	for n in nodes:
-		var label := "%s (%s)" % [str(n.name), str(n.get_script().resource_path.get_file()) if n.get_script() != null else n.get_class()]
+		var label = "%s (%s)" % [str(n.name), str(n.get_script().resource_path.get_file()) if n.get_script() != null else n.get_class()]
 		ok(n is Node3D, "%s: interactable must be a Node3D" % label)
 		ok(n.has_method("get_prompt"), "%s: missing get_prompt(player)" % label)
 		ok(n.has_method("interact"), "%s: missing interact(player)" % label)
@@ -370,7 +370,7 @@ func t_24_interaction_finder_sets_prompt() -> void:
 	await r.wait_frames(10)
 	# stand next to the first interactable that offers a prompt and expect the HUD action button to show it
 	var target: Node3D = null
-	var want := ""
+	var want = ""
 	for n in r.main.get_tree().get_nodes_in_group("interactable"):
 		if n is Node3D and n.has_method("get_prompt"):
 			var pr: String = str(n.get_prompt(p))
@@ -399,7 +399,7 @@ func t_30_notebook_opens_and_closes() -> void:
 	if not _need(["hud"]): return
 	var hud: Node = r.part("hud")
 	if not hud.has_method("open_notebook"): skip("hud has no open_notebook"); return
-	var tabs := ["", "today", "cats", "fish", "shore", "people", "requests", "bag"]
+	var tabs = ["", "today", "cats", "fish", "shore", "people", "requests", "bag"]
 	for tab in tabs:
 		var m0: float = gs.minute
 		hud.open_notebook(tab)
@@ -499,7 +499,7 @@ func t_32_every_panel_closes_via_ui_signal() -> void:
 
 # ------------------------------------------------------------------ shop economy (pure logic)
 func _eco() -> Script:
-	var path := "res://scripts/systems/town/economy.gd"
+	var path = "res://scripts/systems/town/economy.gd"
 	return load(path) if ResourceLoader.exists(path) else null
 
 func t_40_shop_buy_sell_math() -> void:
@@ -507,8 +507,8 @@ func t_40_shop_buy_sell_math() -> void:
 	var eco = _eco()
 	if eco == null: skip("economy.gd not written yet"); return
 	eco.set_mods(0.0, 0.0)
-	var fish := data_dict("FISH")
-	var base := int(fish["sardine"].price)
+	var fish = data_dict("FISH")
+	var base = int(fish["sardine"].price)
 	# sell
 	gs.add_item("fish:sardine", 3)
 	var c0: int = gs.coins
@@ -521,7 +521,7 @@ func t_40_shop_buy_sell_math() -> void:
 	ok(not gs.bag.has("fish:sardine"), "sold-out item must leave the bag")
 	# gold
 	gs.add_item("fish:sardine_gold", 1)
-	var gold_mult := int(data_const("GOLD_PRICE_MULT", 5))
+	var gold_mult = int(data_const("GOLD_PRICE_MULT", 5))
 	eq(eco.unit_price("fish:sardine_gold"), base * gold_mult, "gold fish price is price x GOLD_PRICE_MULT")
 	# items that must not be sellable
 	gs.add_item("treat:cream", 1)
@@ -529,7 +529,7 @@ func t_40_shop_buy_sell_math() -> void:
 	eq(int(gs.bag.get("treat:cream", 0)), 1, "a refused sale must not remove the item")
 	# buy
 	gs.coins = 1000
-	var tuna_price := int(data_dict("SHOP")["treat:tuna_bites"].price)
+	var tuna_price = int(data_dict("SHOP")["treat:tuna_bites"].price)
 	var before_bag: int = int(gs.bag.get("treat:tuna_bites", 0))
 	var res: Dictionary = eco.buy("treat:tuna_bites")
 	ok(bool(res.get("ok", false)), "buying a treat with enough yen failed: %s" % str(res))
@@ -555,7 +555,7 @@ func t_41_rods_and_cosmetics() -> void:
 	var eco = _eco()
 	if eco == null: skip("economy.gd not written yet"); return
 	eco.set_mods(0.0, 0.0)
-	var shop := data_dict("SHOP")
+	var shop = data_dict("SHOP")
 	gs.coins = 1000000
 	# rod 3 is locked before rod 2 and before its lantern
 	var res: Dictionary = eco.buy("rod:3")
@@ -581,7 +581,7 @@ func t_41_rods_and_cosmetics() -> void:
 	if eco.has_method("shop_ids"):
 		for id in eco.shop_ids():
 			ok(not bool(shop.get(str(id), {}).get("hidden", false)), "hidden item '%s' is listed in the shop" % str(id))
-			var nl := str(shop.get(str(id), {}).get("needs_lantern", ""))
+			var nl = str(shop.get(str(id), {}).get("needs_lantern", ""))
 			ok(nl == "" or gs.lanterns.has(nl), "'%s' is listed before the %s lantern is lit" % [str(id), nl])
 	# cosmetics: buy, wear, take off, persist
 	gs.coins = 1000000
@@ -607,7 +607,7 @@ func t_50_fishing_auto_run_catches_a_fish() -> void:
 	var p: Node3D = r.part("player")
 	var spots = f.get("spots")
 	if typeof(spots) != TYPE_DICTIONARY or spots.is_empty(): skip("fishing has no spots yet"); return
-	var key := "pier_end" if spots.has("pier_end") else str(spots.keys()[0])
+	var key = "pier_end" if spots.has("pier_end") else str(spots.keys()[0])
 	var sp: Node3D = spots[key]
 	_set_time("morning", 30.0)
 	await r.wait_frames(5)
@@ -615,7 +615,7 @@ func t_50_fishing_auto_run_catches_a_fish() -> void:
 	if not is_nan(_ground_y(0, 0)) and _spot("pier_end") != Vector3.ZERO: _teleport(p, _spot("pier_end") + Vector3(0, 0.1, 0))
 	else: _teleport(p, sp.global_position + Vector3(0, 0.1, 0))
 	await r.wait_frames(5)
-	var logged_before := gs.fish_log.size()
+	var logged_before = gs.fish_log.size()
 	f.begin(sp, p)
 	ok(f.is_active(), "fishing.begin() did not start a session")
 	ok(bool(p.get("busy")), "player must be busy while fishing")
@@ -623,7 +623,7 @@ func t_50_fishing_auto_run_catches_a_fish() -> void:
 	ok(finished, "the fishing auto-run did not reach the catch card within 40 s (state %s)" % str(f.get("state")))
 	await r.wait_sec(0.5)
 	ok(gs.fish_log.size() > logged_before, "no entry in fish_log after a caught fish")
-	var any_fish := false
+	var any_fish = false
 	for k in gs.bag.keys():
 		if str(k).begins_with("fish:"): any_fish = true
 	ok(any_fish, "the caught fish is not in the bag")
@@ -689,26 +689,26 @@ func t_52_shore_pickup_counts_and_saves() -> void:
 	var p: Node3D = r.part("player")
 	_set_time("morning", 10.0)
 	await r.wait_sec(1.0)
-	var items := _nodes_by_script("town/shore_pickup.gd")
+	var items = _nodes_by_script("town/shore_pickup.gd")
 	if items.is_empty(): skip("no shore items spawned (no island / beach yet?)"); return
-	var daily := int(data_const("SHORE_BEACH_DAILY", 14))
-	var beach_items := 0
+	var daily = int(data_const("SHORE_BEACH_DAILY", 14))
+	var beach_items = 0
 	for it in items:
 		if str(data_dict("SHORE").get(str(it.get("item_id")), {}).get("where", "beach")) == "beach": beach_items += 1
 	ok(beach_items >= daily - 2 and beach_items <= daily + 2, "morning beach items: %d (Data.SHORE_BEACH_DAILY is %d)" % [beach_items, daily])
 	var it: Node3D = items[0]
-	var id := str(it.get("item_id"))
+	var id = str(it.get("item_id"))
 	_teleport(p, it.global_position + Vector3(0.3, 0.2, 0.0))
 	await r.wait_frames(5)
 	var prompt: String = it.get_prompt(p)
 	ok(prompt != "", "a shore item next to the player offers no prompt")
-	var count_before := int(gs.shore_log.get(id, 0))
+	var count_before = int(gs.shore_log.get(id, 0))
 	var n_before: int = shore.item_count()
 	var sparks_before: int = gs.sparks
 	it.interact(p)
 	await r.wait_frames(3)
 	eq(int(gs.shore_log.get(id, 0)), count_before + 1, "shore_log count for %s after pickup" % id)
-	var in_bag := false
+	var in_bag = false
 	for k in gs.bag.keys():
 		if str(k).begins_with("shore:" + id): in_bag = true
 	ok(in_bag or bool(data_dict("SHORE").get(id, {}).get("bottle", false)), "picked-up item shore:%s is not in the bag" % id)
@@ -726,15 +726,15 @@ func t_53_lantern_lighting() -> void:
 	reset_world()
 	await r.fresh_main()
 	if not _need(["lanterns", "player"]): return
-	var spots := _nodes_by_script("town/lantern_spot.gd")
+	var spots = _nodes_by_script("town/lantern_spot.gd")
 	if spots.is_empty(): skip("no lantern spots built"); return
 	var p: Node3D = r.part("player")
 	var spot: Node3D = null
 	for s in spots:
 		if str(s.get("lantern_id")) == "harbour": spot = s
 	if spot == null: spot = spots[0]
-	var id := str(spot.get("lantern_id"))
-	var cost := int(spot.get("cost"))
+	var id = str(spot.get("lantern_id"))
+	var cost = int(spot.get("cost"))
 	_teleport(p, spot.global_position + Vector3(0.5, 0.2, 0.5))
 	await r.wait_frames(5)
 	gs.sparks = cost - 1
@@ -748,7 +748,7 @@ func t_53_lantern_lighting() -> void:
 	var again: int = gs.sparks
 	spot.interact(p)
 	eq(gs.sparks, again, "lighting twice must not spend sparks again")
-	var opened := await r.wait_until(func(): return not bool(p.get("busy")), 4.0)
+	var opened = await r.wait_until(func(): return not bool(p.get("busy")), 4.0)
 	ok(opened, "player.busy stayed true after the lantern moment (softlock)")
 	var isl: Node = r.part("island")
 	if isl != null and isl.has_method("is_walkable"):
@@ -769,10 +769,10 @@ func t_60_cat_cast_matches_schedule() -> void:
 	if not _need(["cats"]): return
 	var cats: Node = r.part("cats")
 	if not cats.has_method("present_ids"): skip("cats has no present_ids()"); return
-	var data := data_dict("CATS")
-	var wx_days := {}
+	var data = data_dict("CATS")
+	var wx_days = {}
 	for wx in WEATHERS:
-		var d := _day_with_weather(wx)
+		var d = _day_with_weather(wx)
 		if d > 0: wx_days[wx] = d
 	var problems: Array = []
 	for slot in SLOTS:
@@ -784,11 +784,11 @@ func t_60_cat_cast_matches_schedule() -> void:
 			var expect: Array = []
 			for id in data.keys():
 				var c: Dictionary = data[id]
-				var nl := str(c.get("needs_lantern", ""))
+				var nl = str(c.get("needs_lantern", ""))
 				if nl != "" and not gs.lanterns.has(nl): continue
 				var wo: Array = c.get("weather_only", [])
 				if not wo.is_empty() and not (wx in wo): continue
-				var spot := ""
+				var spot = ""
 				if wx == "rain" and c.has("rain_spot"): spot = str(c.rain_spot)
 				elif wx == "sunny" and c.has("sun_spot") and c.get("haunts", {}).has(slot): spot = str(c.sun_spot)
 				else: spot = str(c.get("haunts", {}).get(slot, ""))
@@ -811,9 +811,9 @@ func t_61_people_follow_routines() -> void:
 	if not _need(["people"]): return
 	var pe: Node = r.part("people")
 	if not pe.has_method("person_at"): skip("people has no person_at(spot)"); return
-	var table := people_table()
+	var table = people_table()
 	if table.is_empty(): skip("no PEOPLE data"); return
-	var tp := 0
+	var tp = 0
 	for slot in SLOTS:
 		_set_time(slot, 20.0)
 		await r.wait_sec(0.6)
@@ -847,9 +847,9 @@ func t_70_slot_and_weather_sweep_has_no_errors() -> void:
 	reset_world()
 	await r.fresh_main()
 	if r.main == null: return
-	var n := 0
+	var n = 0
 	for wx in WEATHERS:
-		var d := _day_with_weather(wx)
+		var d = _day_with_weather(wx)
 		if d == 0: continue
 		for slot in SLOTS:
 			gs.day = d
@@ -867,8 +867,8 @@ func t_71_new_day_flow() -> void:
 	await r.fresh_main()
 	if r.main == null: return
 	await r.wait_frames(5)
-	var days := [gs.day]
-	var cb := func(d): days.append(d)
+	var days = [gs.day]
+	var cb = func(d): days.append(d)
 	gs.new_day.connect(cb)
 	for i in 3:
 		gs.minute = 1799.0
@@ -877,12 +877,12 @@ func t_71_new_day_flow() -> void:
 	gs.new_day.disconnect(cb)
 	eq(gs.day, 4, "three overnight rollovers")
 	eq(days.size(), 4, "new_day fires once per rollover")
-	var shore := r.part("shore")
+	var shore = r.part("shore")
 	if shore != null and not _nodes_by_script("town/shore_pickup.gd").is_empty():
 		_set_time("morning", 10.0)
 		await r.wait_sec(0.5)
 		ok(shore.item_count() >= int(data_const("SHORE_BEACH_DAILY", 14)) - 2, "a new day should respawn the beach items (have %d)" % shore.item_count())
-	var town := r.part("town")
+	var town = r.part("town")
 	if town != null:
 		ok(gs.requests.size() <= int(data_const("REQUESTS_PER_DAY", 3)), "more than REQUESTS_PER_DAY requests: %d" % gs.requests.size())
 		if town.has_method("open_board"):
@@ -912,7 +912,7 @@ func t_72_save_load_reload_main() -> void:
 	eq(gs.day, 3, "day after reboot + load")
 	eq(int(gs.bag.get("fish:crab", 0)), 2, "bag after reboot + load")
 	ok(gs.lanterns.has("harbour"), "lantern after reboot + load")
-	var spots := _nodes_by_script("town/lantern_spot.gd")
+	var spots = _nodes_by_script("town/lantern_spot.gd")
 	for s in spots:
 		if str(s.get("lantern_id")) == "harbour": ok(bool(s.get("lit")), "harbour lantern is not lit after loading a save with it lit")
 	reset_world()
@@ -922,8 +922,8 @@ func t_73_soak_does_not_leak() -> void:
 	await r.fresh_main()
 	if r.main == null: return
 	await r.wait_sec(1.0)
-	var nodes_before := int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT))
-	var orphans_before := int(Performance.get_monitor(Performance.OBJECT_ORPHAN_NODE_COUNT))
+	var nodes_before = int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT))
+	var orphans_before = int(Performance.get_monitor(Performance.OBJECT_ORPHAN_NODE_COUNT))
 	for i in 4:
 		for slot in SLOTS:
 			_set_time(slot, 5.0)
@@ -932,8 +932,8 @@ func t_73_soak_does_not_leak() -> void:
 		gs._process(1.0)
 		await r.wait_sec(0.3)
 	await r.wait_sec(1.0)
-	var nodes_after := int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT))
-	var orphans_after := int(Performance.get_monitor(Performance.OBJECT_ORPHAN_NODE_COUNT))
+	var nodes_after = int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT))
+	var orphans_after = int(Performance.get_monitor(Performance.OBJECT_ORPHAN_NODE_COUNT))
 	note("nodes %d -> %d, orphans %d -> %d over 4 simulated days" % [nodes_before, nodes_after, orphans_before, orphans_after])
 	ok(nodes_after <= nodes_before * 1.25 + 40, "node count grew from %d to %d over 4 days (leak?)" % [nodes_before, nodes_after])
 	ok(orphans_after <= orphans_before + 25, "orphan nodes grew from %d to %d (nodes removed from the tree but never freed)" % [orphans_before, orphans_after])
@@ -945,7 +945,7 @@ func _check_grounded(samples_by_label: Dictionary, label_prefix: String) -> void
 		var offs: Array = samples_by_label[label].offsets
 		if offs.is_empty(): continue
 		var first: float = float(offs[0])
-		var sorted := offs.duplicate(); sorted.sort()
+		var sorted = offs.duplicate(); sorted.sort()
 		var median: float = float(sorted[sorted.size() / 2])
 		var worst: float = 0.0
 		for o in offs:
@@ -962,14 +962,14 @@ func _sample_characters(store: Dictionary) -> void:
 	for c in characters():
 		var n: Node3D = c.node
 		if not is_instance_valid(n) or not n.is_inside_tree() or not n.is_visible_in_tree(): continue
-		var low := lowest_point(n)
+		var low = lowest_point(n)
 		if low.mesh == null: continue
-		var gp := n.global_position
-		var cands := _surface_candidates(n, gp.x, gp.z)
+		var gp = n.global_position
+		var cands = _surface_candidates(n, gp.x, gp.z)
 		if cands.is_empty(): continue
 		# the surface they stand on: the candidate closest to the lowest mesh point (ground_y, a bench via ray, own surface_y)
-		var best_off := INF
-		var best_name := ""
+		var best_off = INF
+		var best_name = ""
 		for cand in cands:
 			var off: float = float(low.y) - float(cand[1])
 			if absf(off) < absf(best_off): best_off = off; best_name = str(cand[0])
@@ -982,13 +982,13 @@ func t_80_characters_stand_on_ground() -> void:
 	reset_world()
 	await r.fresh_main()
 	if not _need(["island", "player"]): return
-	var samples := {}
-	var visited := 0
+	var samples = {}
+	var visited = 0
 	# several times of day so cats and townsfolk are out in different places
 	for slot in SLOTS:
 		_set_time(slot, 15.0)
 		await r.wait_sec(0.8)
-		var per := {}
+		var per = {}
 		_sample_characters(per)                      # at spawn / right after the schedule moved them
 		for k in 5:
 			await r.wait_sec(0.4)                    # ~2 s of wandering
@@ -1006,10 +1006,10 @@ func t_81_player_grounded_walking_and_riding() -> void:
 	await r.ensure_main()
 	if not _need(["island", "player"]): return
 	var p: CharacterBody3D = r.part("player")
-	var sp := _spot("spawn")
+	var sp = _spot("spawn")
 	if sp != Vector3.ZERO: _teleport(p, sp + Vector3(0, 0.1, 0))
 	await r.wait_sec(0.6)
-	var samples := {}
+	var samples = {}
 	for mode in ["standing", "walking", "riding", "sitting"]:
 		match mode:
 			"walking": ib.touch_move = Vector2(0, -1)
@@ -1023,14 +1023,14 @@ func t_81_player_grounded_walking_and_riding() -> void:
 				if p.get("riding"): ib.ride_pressed.emit(); await r.wait_frames(6)
 				if p.has_method("sit"): p.sit(true)
 				await r.wait_sec(0.5)
-		var per := {}
+		var per = {}
 		for i in 4:
 			await r.wait_sec(0.3)
-			var low := lowest_point(p)
-			var gp := p.global_position
-			var cands := _surface_candidates(p, gp.x, gp.z)
+			var low = lowest_point(p)
+			var gp = p.global_position
+			var cands = _surface_candidates(p, gp.x, gp.z)
 			if low.mesh == null or cands.is_empty(): continue
-			var best_off := INF
+			var best_off = INF
 			for cand in cands:
 				var off: float = float(low.y) - float(cand[1])
 				if absf(off) < absf(best_off): best_off = off
@@ -1049,16 +1049,16 @@ func t_82_shore_items_rest_on_ground() -> void:
 	if not _need(["island", "shore"]): return
 	_set_time("morning", 10.0)
 	await r.wait_sec(1.0)
-	var items := _nodes_by_script("town/shore_pickup.gd")
+	var items = _nodes_by_script("town/shore_pickup.gd")
 	if items.is_empty(): skip("no shore items spawned"); return
 	var bad: Array = []
-	var worst := 0.0
+	var worst = 0.0
 	for it in items:
 		if not it.is_visible_in_tree(): continue
-		var low := lowest_point(it)
+		var low = lowest_point(it)
 		if low.mesh == null: continue
 		var gp: Vector3 = it.global_position
-		var gy := _ground_y(gp.x, gp.z)
+		var gy = _ground_y(gp.x, gp.z)
 		if is_nan(gy): continue
 		var off: float = float(low.y) - gy
 		if absf(off) > absf(worst): worst = off
@@ -1071,30 +1071,30 @@ func t_83_characters_face_where_they_walk() -> void:
 	await r.ensure_main()
 	if not _need(["player"]): return
 	var p: CharacterBody3D = r.part("player")
-	var sp := _spot("spawn")
+	var sp = _spot("spawn")
 	if sp != Vector3.ZERO: _teleport(p, sp + Vector3(0, 0.1, 0))
 	await r.wait_sec(0.5)
 	var rig: Node3D = p.get_node_or_null("Rig")
 	if rig == null: skip("player has no 'Rig' node to read the facing from"); return
 	var results: Array = []
 	for dir in [Vector2(0, -1), Vector2(1, 0), Vector2(0, 1), Vector2(-1, 0)]:
-		var a := p.global_position
+		var a = p.global_position
 		ib.touch_move = dir
 		await r.wait_sec(0.9)
-		var v := p.global_position - a
+		var v = p.global_position - a
 		v.y = 0.0
-		var fwd := -rig.global_transform.basis.z   # Godot convention; the rig may use +Z (checked below)
+		var fwd = -rig.global_transform.basis.z   # Godot convention; the rig may use +Z (checked below)
 		fwd.y = 0.0
 		if v.length() < 0.8: continue
-		var d1 := fwd.normalized().dot(v.normalized())
-		var d2 := (-fwd).normalized().dot(v.normalized())
+		var d1 = fwd.normalized().dot(v.normalized())
+		var d2 = (-fwd).normalized().dot(v.normalized())
 		results.append([dir, d1, d2])
 		ib.touch_move = Vector2.ZERO
 		await r.wait_sec(0.3)
 	ib.touch_move = Vector2.ZERO
 	if results.is_empty(): skip("player did not move far enough to judge the facing"); return
 	# the rig faces +Z or -Z consistently: the same sign must win in every direction, and clearly
-	var pos := 0; var neg := 0
+	var pos = 0; var neg = 0
 	for res in results:
 		if res[1] > 0.6: neg += 1
 		if res[2] > 0.6: pos += 1

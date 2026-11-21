@@ -55,6 +55,7 @@ func run(system: Node, m: String, args: Dictionary) -> void:
 	match mode:
 		"cats_logic": await _run_logic()
 		"cats_scare": await _run_scare()
+		"cats_looks": await _run_looks()
 		_: await _run_shot()
 
 # ---------------------------------------------------------------- stage
@@ -105,6 +106,8 @@ func _prepare_world() -> void:
 	GameState.flags.clear()
 	GameState.lanterns.clear()
 	sys.sit_reward_time = 0.9
+	sys.spot_override = {"spawn": Vector3(0, 0, 0), "porch": Vector3(2.5, 0, -3.0), "home": Vector3(-9, 0, -3), "plaza": Vector3(0, 0, -10),
+		"shop": Vector3(9, 0, -6), "pier": Vector3(9, 0, 3), "beach": Vector3(-8, 0, 7), "hill": Vector3(-12, 0, -11), "lighthouse": Vector3(13, 0, -12)}
 
 func _cat_at(id: String, offset: Vector3) -> Node3D:
 	var p := _anchor + offset
@@ -175,6 +178,7 @@ func _run_logic() -> void:
 	await _logic_follow()
 	await _logic_scare()
 	await _logic_sit_end()
+	await _logic_feet()
 	await _logic_friend_gifts()
 	print("[cats test] logic: %d checks, %d failed" % [checks, fails])
 	print("[cats test] RESULT: ", "PASS" if fails == 0 else "FAIL")
@@ -209,22 +213,45 @@ func _ids_sorted() -> Array:
 	ids.sort()
 	return ids
 
-func _logic_schedule_live() -> void:
+func _clear_cats() -> void:
 	for a in sys.actors.values(): a.queue_free()
 	sys.actors.clear()
+	sys._seen.clear()
+
+func _logic_schedule_live() -> void:
+	_clear_cats()
 	_day_with("sunny")
+	var cap_ok := true
+	var spots_ok := true
+	for slot in ["morning", "afternoon", "evening", "night"]:
+		for weather in ["sunny", "cloudy", "rain", "fog"]:
+			var plan: Dictionary = sys.lineup(slot, weather)
+			if plan.size() > (3 if slot == "night" else 4): cap_ok = false
+			var seen_spots := []
+			for id in plan.keys():
+				var sp: String = plan[id]["spot"]
+				if sp in seen_spots: spots_ok = false
+				seen_spots.append(sp)
+				var raw: String = sys.schedule_spot(String(id), slot, weather)
+				if raw != sp: spots_ok = false
+	_check(cap_ok, "never more than 4 cats out (3 at night) in any slot or weather")
+	_check(spots_ok, "one cat per spot, and every cat is at a spot its schedule allows")
 	GameState.minute = 8.0 * 60.0
 	sys.refresh_schedule(true)
-	_check(_ids_sorted() == ["biscuit", "marmalade", "mochi", "pancake", "pepper", "tofu"], "sunny morning cast: %s" % [_ids_sorted()])
-	GameState.minute = 13.0 * 60.0
-	sys.refresh_schedule(true)
-	_check(_ids_sorted() == ["biscuit", "marmalade", "mochi", "pancake", "pepper", "saffron", "tofu"], "sunny afternoon cast: %s" % [_ids_sorted()])
-	_check(String(sys.get_cat("saffron").haunt) == "porch", "saffron placed on the porch")
+	var plan_m: Dictionary = sys.lineup("morning", "sunny")
+	var want: Array = plan_m.keys()
+	want.sort()
+	_check(_ids_sorted() == want and want.size() >= 3, "sunny morning cast matches the lineup (%s)" % [_ids_sorted()])
+	for id in sys.actors.keys():
+		var a: Node3D = sys.actors[id]
+		_check(a.global_position.distance_to(Vector3(0, 0, 0)) > 4.4, "%s is not at the spawn" % id)
+	_check(not sys.is_present("disco") and not sys.is_present("saffron"), "disco and saffron are off in the morning")
 	GameState.minute = 18.0 * 60.0
 	sys.refresh_schedule(true)
-	_check(_ids_sorted() == ["biscuit", "disco", "marmalade", "pancake", "pepper", "saffron", "tofu"], "sunny evening cast: %s" % [_ids_sorted()])
-	await _wait(0.5)
-	_check(not sys.is_present("mochi"), "mochi left in the evening")
+	_check(_ids_sorted().size() <= 4, "evening cast capped: %s" % [_ids_sorted()])
+	for id in _ids_sorted():
+		_check(String(sys.schedule_spot(String(id))) == String(sys.get_cat(String(id)).haunt), "%s stands at its scheduled spot" % id)
+	_check(not sys.is_present("mochi"), "mochi has no evening haunt")
 	_day_with("fog")
 	GameState.minute = 8.0 * 60.0
 	sys.refresh_schedule(true)
@@ -233,11 +260,22 @@ func _logic_schedule_live() -> void:
 	sys.refresh_schedule(true)
 	_check(sys.is_present("mochi") and String(sys.get_cat("mochi").haunt) == "shop", "mochi under the shop awning in rain")
 	GameState.lanterns["hill"] = true
+	GameState.minute = 22.0 * 60.0
 	sys.refresh_schedule(true)
-	_check(sys.is_present("captain"), "captain present after the hill lantern")
+	_check(sys.is_present("captain"), "captain present at night after the hill lantern")
 	GameState.lanterns.erase("hill")
-	for a in sys.actors.values(): a.queue_free()
-	sys.actors.clear()
+	# an unknown spot keeps the cat hidden (never dropped at the origin)
+	var saved: Dictionary = sys.spot_override.duplicate()
+	sys.spot_override.erase("shop")
+	_day_with("sunny")
+	GameState.minute = 13.0 * 60.0
+	var plan_h: Dictionary = sys.lineup("afternoon", "sunny")
+	var any_shop := false
+	for id in plan_h.keys():
+		if String(plan_h[id]["spot"]) == "shop": any_shop = true
+	_check(not any_shop, "cats whose spot is unknown stay hidden")
+	sys.spot_override = saved
+	_clear_cats()
 	GameState.day = 1
 	_keep_morning()
 
@@ -330,6 +368,7 @@ func _logic_secret_rules() -> void:
 	GameState.cats.clear()
 	GameState.bag.clear()
 	var m := _cat_at("marmalade", _toward * 1.0)
+	var others := [_cat_at("tofu", _toward * 3.0 + _right * 2.0), _cat_at("biscuit", _toward * 3.0 - _right * 2.0)]
 	await _wait(1.2)
 	var sm: Dictionary = sys.st("marmalade")
 	sm["hearts"] = 1
@@ -341,10 +380,10 @@ func _logic_secret_rules() -> void:
 	_check(GameState.has_item("treat:catnip") and sys.hearts("marmalade") == 1, "marmalade refuses until everyone else was petted")
 	_check(not ("secret" in sys.st("marmalade")["facts"]), "secret not learned on refusal")
 	await _wait(0.2)
-	for oid in Data.CATS.keys():
+	for oid in sys._seen.keys():
 		if oid == "marmalade": continue
-		if sys._around_today(String(oid)): sys.st(String(oid))["last_pet_day"] = GameState.day
-	_check(sys.others_petted_today("marmalade"), "rule satisfied once every cat around today is petted")
+		sys.st(String(oid))["last_pet_day"] = GameState.day
+	_check(others.size() == 2 and sys.others_petted_today("marmalade"), "rule satisfied once every cat out today is petted")
 	m.interact(player)
 	_check(not GameState.has_item("treat:catnip") and sys.hearts("marmalade") == 3, "marmalade accepts after the rounds (hearts %d)" % sys.hearts("marmalade"))
 	_check("secret" in sys.st("marmalade")["facts"], "marmalade secret learned")
@@ -454,3 +493,57 @@ func _shore_items() -> int:
 	for k in GameState.bag.keys():
 		if String(k).begins_with("shore:"): n += int(GameState.bag[k])
 	return n
+
+# ---------------------------------------------------------------- feet on the ground
+func _lowest(a: Node3D) -> float:
+	var idx := 1 if (a._models[1].root as Node3D).visible else 0
+	var low := INF
+	for m in a._model_meshes[idx]:
+		low = minf(low, a._mesh_low_y(m))
+	return low
+
+func _logic_feet() -> void:
+	_clear_cats()
+	GameState.cats.clear()
+	var a: Node3D = _cat_at("tofu", _toward * 2.0)
+	a.look_at_pos = Vector3.INF
+	await _wait(1.0)
+	var worst := 0.0
+	for st in [CatActor.S.IDLE, CatActor.S.SIT, CatActor.S.GROOM, CatActor.S.NAP, CatActor.S.LOOK, CatActor.S.ALERT]:
+		a._enter(st, 5.0)
+		await _wait(0.6)
+		var err := absf(_lowest(a) - a.global_position.y)
+		worst = maxf(worst, err)
+		_check(err < 0.02, "feet on the ground in state %d (off by %.3f m)" % [st, err])
+	_clear_cats()
+
+# ---------------------------------------------------------------- looks test: close-ups of every cat, front / side / back
+func _shot(path: String) -> void:
+	await RenderingServer.frame_post_draw
+	get_viewport().get_texture().get_image().save_png(path)
+
+func _run_looks() -> void:
+	var cam := get_viewport().get_camera_3d()
+	var ids: Array = Data.CATS.keys()
+	ids.sort()
+	var i := 0
+	for id in ids:
+		var pos := _anchor + Vector3(0, 0, -2.0)
+		var a: Node3D = sys.spawn_test_cat(String(id), pos, true)
+		a.look_at_pos = Vector3.INF
+		a.global_position = pos
+		a.yaw = 0.0
+		a._enter(CatActor.S.SIT if i % 2 == 0 else CatActor.S.IDLE, 60.0)
+		await get_tree().create_timer(1.4).timeout
+		var views := {"front": Vector3(0.0, 0.9, 2.1), "side": Vector3(2.1, 0.9, 0.0), "back": Vector3(0.0, 0.9, -2.1)}
+		for v in views.keys():
+			cam.global_position = pos + views[v]
+			cam.look_at(pos + Vector3(0, 0.35, 0), Vector3.UP)
+			await get_tree().process_frame
+			await _shot("/tmp/lb_cat_%s_%s.png" % [id, v])
+		a.queue_free()
+		sys.actors.erase(id)
+		i += 1
+	print("[cats test] looks saved to /tmp/lb_cat_<id>_<front|side|back>.png")
+	GameState.reset()
+	get_tree().quit()
