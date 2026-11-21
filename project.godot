@@ -19,6 +19,7 @@ config/features=PackedStringArray("4.7")
 GameState="*res://scripts/core/game_state.gd"
 Data="*res://scripts/core/data.gd"
 InputBridge="*res://scripts/core/input_bridge.gd"
+Music="*res://scripts/core/music.gd"
 
 [display]
 
@@ -33,6 +34,9 @@ window/handheld/orientation=1
 pointing/emulate_touch_from_mouse=true
 
 [rendering]
+
+renderer/rendering_method="forward_plus"
+renderer/rendering_method.mobile="mobile"
 
 lights_and_shadows/directional_shadow/soft_shadow_filter_quality=4
 anti_aliasing/quality/msaa_3d=2

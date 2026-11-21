@@ -64,3 +64,7 @@ Any Node3D in group "interactable" with `var interact_radius: float`, `func get_
 - **Saving is automatic.** Never ask the player to save. After any meaningful change (catch, pickup, purchase, friendship, lantern, request) call `GameState.save_soon()`. Only store plain data (Dictionary/Array/String/int/float/bool) in GameState so JSON round-trips; ints come back as floats from JSON, so cast with int().
 - **UI must feel nice.** Touch targets at least 88 px tall, clear pressed/disabled states, squish on press, consistent Style, no text overflow at 540 px width, every button gives sound-free visual feedback within one frame.
 - **Self-test.** Keep your `-- test=<name>` path and make sure it exercises the full loop (start, success, failure, cancel) without errors in the log.
+
+## Music (added)
+- `Music` autoload plays the jazz by time of day. Settings: `Music.set_enabled(bool)`, `Music.set_volume(0..1)`, `Music.enabled()`, `Music.volume()`. UI: add a small Settings panel (music on/off + volume slider) reachable from the Notebook.
+- Credits (Pixabay license): "Coffee Jazz" by Aurec; "Cozy Relax Jazz" by Denis Pavlov Music.
