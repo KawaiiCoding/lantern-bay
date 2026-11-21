@@ -19,7 +19,7 @@ const WEATHERS := ["sunny", "cloudy", "rain", "fog"]
 
 var day := 1
 var minute := DAY_START                # minutes since 00:00
-var coins := 50
+var coins := 500                       # yen (shown as green paper money, never "coins")
 var sparks := 0
 var rod_level := 1
 ## item_id -> count (fish are stored as "fish:<id>", shore items as "shore:<id>", treats "treat:<id>")
@@ -32,6 +32,8 @@ var cats := {}
 var shore_log := {}
 ## Array of request dictionaries (see Town system)
 var requests: Array = []
+## person_id -> {"points": int, "last_talk_day": int, "last_gift_day": int, "seen_lines": Array, "perks": Array, "events": Array}
+var people := {}
 var lanterns := {}                     # lantern_id -> true
 var cosmetics := {}                    # id -> true; "equipped": {...}
 var flags := {}                        # free-form story / secret flags
@@ -123,26 +125,97 @@ func learn_cat_fact(id: String, fact: String) -> void:
 	if not (fact in s.facts):
 		s.facts.append(fact); catalog_changed.emit()
 
+# ---------------- townsfolk
+signal people_changed()
+func person_state(id: String) -> Dictionary:
+	if not people.has(id):
+		people[id] = {"points": 0, "last_talk_day": 0, "last_gift_day": 0, "seen_lines": [], "perks": [], "events": []}
+	return people[id]
+## Friendship level 0..10 from points (Data.PEOPLE_LEVELS thresholds when present, else 100 points per level).
+func person_level(id: String) -> int:
+	var pts := int(person_state(id).points)
+	var th: Array = Data.get("PEOPLE_LEVELS") if Data.get("PEOPLE_LEVELS") != null else []
+	if th.is_empty():
+		return clampi(pts / 100, 0, 10)
+	var lv := 0
+	for i in th.size():
+		if pts >= int(th[i]): lv = i + 1
+	return min(lv, 10)
+func add_friendship(id: String, n: int, why := "") -> void:
+	var before := person_level(id)
+	var st := person_state(id)
+	st.points = max(0, int(st.points) + n)
+	people_changed.emit()
+	var after := person_level(id)
+	if after > before:
+		say("%s and Mocha are closer now (level %d)." % [id.capitalize(), after])
+	elif why != "":
+		pass
+## True when a person's perk is unlocked (perk ids defined in Data.PEOPLE[id].perks).
+func has_perk(id: String, perk: String) -> bool:
+	return perk in person_state(id).perks
+
 # ---------------- save / load
 func to_dict() -> Dictionary:
 	return {"v": 1, "day": day, "minute": minute, "coins": coins, "sparks": sparks, "rod_level": rod_level, "bag": bag,
 		"fish_log": fish_log, "cats": cats, "shore_log": shore_log, "requests": requests, "lanterns": lanterns,
-		"cosmetics": cosmetics, "flags": flags}
+		"cosmetics": cosmetics, "flags": flags, "people": people}
+## Saving is automatic and safe: every 30 s, after important moments (systems call save_soon()),
+## when the app goes to the background or closes. Writes to a temp file, then swaps it in, and keeps
+## the previous save as a backup, so a crash mid-write never loses progress.
+func save_soon() -> void:
+	_save_timer = 28.0   # saves within ~2 s, batching several events into one write
+
 func save_game() -> void:
-	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
-	if f: f.store_string(JSON.stringify(to_dict()))
-func load_game() -> void:
-	if not FileAccess.file_exists(SAVE_PATH): return
-	var f := FileAccess.open(SAVE_PATH, FileAccess.READ)
+	var tmp := SAVE_PATH + ".tmp"
+	var f := FileAccess.open(tmp, FileAccess.WRITE)
+	if f == null:
+		push_warning("save failed: %s" % FileAccess.get_open_error()); return
+	f.store_string(JSON.stringify(to_dict()))
+	f.close()
+	var dir := DirAccess.open("user://")
+	if dir == null: return
+	if dir.file_exists("save.json"):
+		dir.remove("save.bak.json")
+		dir.rename("save.json", "save.bak.json")
+	dir.rename("save.json.tmp", "save.json")
+	_save_timer = 0.0
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_APPLICATION_PAUSED \
+			or what == NOTIFICATION_APPLICATION_FOCUS_OUT or what == NOTIFICATION_PREDELETE:
+		save_game()
+
+func _read(path: String) -> Variant:
+	if not FileAccess.file_exists(path): return null
+	var f := FileAccess.open(path, FileAccess.READ)
+	if f == null: return null
 	var d = JSON.parse_string(f.get_as_text())
-	if typeof(d) != TYPE_DICTIONARY: return
-	day = int(d.get("day", 1)); minute = float(d.get("minute", DAY_START)); coins = int(d.get("coins", 50))
-	sparks = int(d.get("sparks", 0)); rod_level = int(d.get("rod_level", 1))
-	bag = d.get("bag", {}); fish_log = d.get("fish_log", {}); cats = d.get("cats", {}); shore_log = d.get("shore_log", {})
-	requests = d.get("requests", []); lanterns = d.get("lanterns", {}); cosmetics = d.get("cosmetics", {}); flags = d.get("flags", {})
-	# JSON numbers come back as float: normalise bag counts
-	for k in bag.keys(): bag[k] = int(bag[k])
+	return d if typeof(d) == TYPE_DICTIONARY else null
+
+func load_game() -> void:
+	var d = _read(SAVE_PATH)
+	if d == null: d = _read("user://save.bak.json")   # fall back to the previous good save
+	if d == null: return
+	day = int(d.get("day", 1)); minute = float(d.get("minute", DAY_START)); coins = int(d.get("coins", 500))
+	sparks = int(d.get("sparks", 0)); rod_level = clampi(int(d.get("rod_level", 1)), 1, 3)
+	bag = _dict(d, "bag"); fish_log = _dict(d, "fish_log"); cats = _dict(d, "cats"); shore_log = _dict(d, "shore_log")
+	var rq = d.get("requests", [])
+	requests = rq if typeof(rq) == TYPE_ARRAY else []
+	lanterns = _dict(d, "lanterns"); cosmetics = _dict(d, "cosmetics"); flags = _dict(d, "flags"); people = _dict(d, "people")
+	# JSON numbers come back as float: normalise counts
+	for k in bag.keys():
+		bag[k] = int(bag[k])
+		if bag[k] <= 0: bag.erase(k)
+	for k in shore_log.keys(): shore_log[k] = int(shore_log[k])
+	if minute < 0.0 or minute > 1440.0 + DAY_START: minute = DAY_START
+
+func _dict(d: Dictionary, key: String) -> Dictionary:
+	var v = d.get(key, {})
+	return v if typeof(v) == TYPE_DICTIONARY else {}
+
 func reset() -> void:
-	if FileAccess.file_exists(SAVE_PATH): DirAccess.remove_absolute(ProjectSettings.globalize_path(SAVE_PATH))
-	day = 1; minute = DAY_START; coins = 50; sparks = 0; rod_level = 1
-	bag = {}; fish_log = {}; cats = {}; shore_log = {}; requests = []; lanterns = {}; cosmetics = {}; flags = {}
+	for f in ["save.json", "save.bak.json", "save.json.tmp"]:
+		if FileAccess.file_exists("user://" + f): DirAccess.remove_absolute(ProjectSettings.globalize_path("user://" + f))
+	day = 1; minute = DAY_START; coins = 500; sparks = 0; rod_level = 1
+	bag = {}; fish_log = {}; cats = {}; shore_log = {}; requests = []; lanterns = {}; cosmetics = {}; flags = {}; people = {}

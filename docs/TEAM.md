@@ -51,3 +51,16 @@ Any Node3D in group "interactable" with `var interact_radius: float`, `func get_
 - Cats (scripts/systems/cats.gd): spawns cat nodes (interactable) per schedule; trust rules per GDD 5.2.
 - Fishing (scripts/systems/fishing.gd + scripts/ui/fishing_ui.gd): fishing spot interactables + minigame + catch card.
 - Shore (scripts/systems/shore.gd), Town (scripts/systems/town.gd + scripts/ui/shop_panel.gd), Lanterns (scripts/systems/lanterns.gd).
+
+## Townsfolk (added)
+- State: `GameState.person_state(id)`, `person_level(id)` (0..10), `add_friendship(id, points, why)`, `has_perk(id, perk)`, signal `people_changed`.
+- Content: `Data.PEOPLE` (design director) and `Data.PEOPLE_LEVELS` (points thresholds). Each person: name, species/look, role, home spot, routine by time slot, likes/loves/dislikes (bag item ids), perks by level, request themes, dialogue lines.
+- System: scripts/systems/people.gd (People team). Exposes on main.systems["people"]: `talk(id)`, `give(id, item_id)`, `perk_value(perk: String, default)` (e.g. shop discount), `person_at(spot)`.
+- Town: Pip is a person (id "pip"); the shop applies `people.perk_value("shop_discount", 0.0)`. Requests carry `who` = person id; completing one calls `GameState.add_friendship(who, points)`.
+- Notebook gets a "People" tab (UI team).
+
+## Quality bar (owner, binding)
+- **No bugs, working mechanics.** Guard every lookup (`.get()` with defaults, `is_instance_valid`, null checks on main.island/player/hud/systems). Never assume another part exists. No softlocks: every modal/panel must be closable, `player.set_busy(true)` must always be paired with `set_busy(false)` on every exit path (cancel, finish, error, scene change).
+- **Saving is automatic.** Never ask the player to save. After any meaningful change (catch, pickup, purchase, friendship, lantern, request) call `GameState.save_soon()`. Only store plain data (Dictionary/Array/String/int/float/bool) in GameState so JSON round-trips; ints come back as floats from JSON, so cast with int().
+- **UI must feel nice.** Touch targets at least 88 px tall, clear pressed/disabled states, squish on press, consistent Style, no text overflow at 540 px width, every button gives sound-free visual feedback within one frame.
+- **Self-test.** Keep your `-- test=<name>` path and make sure it exercises the full loop (start, success, failure, cancel) without errors in the log.

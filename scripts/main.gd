@@ -19,6 +19,7 @@ const PARTS := [
 	["cats", "res://scripts/systems/cats.gd"],
 	["fishing", "res://scripts/systems/fishing.gd"],
 	["shore", "res://scripts/systems/shore.gd"],
+	["people", "res://scripts/systems/people.gd"],
 	["town", "res://scripts/systems/town.gd"],
 	["lanterns", "res://scripts/systems/lanterns.gd"],
 	["hud", "res://scripts/ui/hud.gd"],
