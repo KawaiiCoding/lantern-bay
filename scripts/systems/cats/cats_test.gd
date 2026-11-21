@@ -158,7 +158,7 @@ func _run_scare() -> void:
 	print("[cats test] mochi state=", mochi.state, " dist=", snappedf(Vector2(mochi.global_position.x - _anchor.x, mochi.global_position.z - _anchor.z).length(), 0.1))
 
 func stub_noise(n: float) -> void:
-	if stub != null: stub.noise = n
+	sys.noise_override = n if n > 0.0 else -1.0
 
 # ---------------------------------------------------------------- logic test
 func _check(cond: bool, msg: String) -> void:
@@ -186,6 +186,7 @@ func _run_logic() -> void:
 	get_tree().quit(0 if fails == 0 else 1)
 
 func _logic_schedule_pure() -> void:
+	GameState.lanterns["harbour"] = true
 	_check(sys.schedule_spot("disco", "morning", "sunny") == "", "disco is out only after dark")
 	_check(sys.schedule_spot("disco", "evening", "sunny") == "lighthouse", "disco at the lighthouse in the evening")
 	_check(sys.schedule_spot("captain", "night", "sunny") == "", "captain needs the hill lantern")
@@ -253,6 +254,7 @@ func _logic_schedule_live() -> void:
 		_check(String(sys.schedule_spot(String(id))) == String(sys.get_cat(String(id)).haunt), "%s stands at its scheduled spot" % id)
 	_check(not sys.is_present("mochi"), "mochi has no evening haunt")
 	_day_with("fog")
+	GameState.lanterns["harbour"] = true
 	GameState.minute = 8.0 * 60.0
 	sys.refresh_schedule(true)
 	_check(sys.is_present("ghost"), "fog cat appears on a foggy day")
@@ -368,7 +370,7 @@ func _logic_secret_rules() -> void:
 	GameState.cats.clear()
 	GameState.bag.clear()
 	var m := _cat_at("marmalade", _toward * 1.0)
-	var others := [_cat_at("tofu", _toward * 3.0 + _right * 2.0), _cat_at("biscuit", _toward * 3.0 - _right * 2.0)]
+	var others := [_cat_at("tofu", _toward * 3.0 + _right * 2.0), _cat_at("biscuit", _toward * 3.0 - _right * 2.0), _cat_at("pepper", _toward * 4.5)]
 	await _wait(1.2)
 	var sm: Dictionary = sys.st("marmalade")
 	sm["hearts"] = 1
@@ -383,7 +385,7 @@ func _logic_secret_rules() -> void:
 	for oid in sys._seen.keys():
 		if oid == "marmalade": continue
 		sys.st(String(oid))["last_pet_day"] = GameState.day
-	_check(others.size() == 2 and sys.others_petted_today("marmalade"), "rule satisfied once every cat out today is petted")
+	_check(others.size() == 3 and sys.others_petted_today("marmalade"), "rule satisfied once every cat out today is petted")
 	m.interact(player)
 	_check(not GameState.has_item("treat:catnip") and sys.hearts("marmalade") == 3, "marmalade accepts after the rounds (hearts %d)" % sys.hearts("marmalade"))
 	_check("secret" in sys.st("marmalade")["facts"], "marmalade secret learned")

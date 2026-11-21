@@ -21,8 +21,8 @@ var _first := true
 
 # hour, sky top, horizon, light colour, light energy, ambient colour, ambient energy
 const KEYS := [
-	[0.0, "141d45", "2c3a72", "a9bcff", 0.32, "4a5a9a", 0.42],
-	[5.0, "1c2550", "4a4a80", "a9bcff", 0.25, "50609e", 0.42],
+	[0.0, "101840", "26336a", "9fb4ff", 0.22, "3a4a8a", 0.26],
+	[5.0, "1c2550", "4a4a80", "9fb4ff", 0.2, "44549a", 0.3],
 	[6.3, "7f9fd6", "ffc3a8", "ffc49a", 0.9, "b8a8c8", 0.45],
 	[8.5, "7fbcef", "fde1c6", "fff0d8", 1.6, "b4c8e4", 0.5],
 	[12.5, "62aaea", "cfe6f5", "fff6e8", 1.85, "bcd0ea", 0.52],
@@ -30,8 +30,8 @@ const KEYS := [
 	[18.2, "8099d8", "ffbf86", "ffb46a", 1.45, "d8b4a8", 0.46],
 	[19.4, "6a6cb8", "ff9a86", "ff8f66", 0.75, "b08eb4", 0.44],
 	[20.2, "3a3f88", "8e70b0", "9fb0ff", 0.2, "6a6aa8", 0.42],
-	[21.3, "18214f", "34427c", "a9bcff", 0.32, "4a5a9a", 0.42],
-	[24.0, "141d45", "2c3a72", "a9bcff", 0.32, "4a5a9a", 0.42],
+	[21.3, "121a44", "2c3a72", "9fb4ff", 0.22, "3a4a8a", 0.26],
+	[24.0, "101840", "26336a", "9fb4ff", 0.22, "3a4a8a", 0.26],
 ]
 
 const SKY_SHADER := """
@@ -243,7 +243,7 @@ func _update(dt: float) -> void:
 	else:
 		env.fog_mode = Environment.FOG_MODE_DEPTH
 		env.fog_sky_affect = 0.0
-	env.tonemap_exposure = lerpf(0.9, 1.0, _nf) * (1.0 + 0.1 * cl)
+	env.tonemap_exposure = lerpf(0.9, 0.85, _nf) * (1.0 + 0.1 * cl)
 	env.adjustment_saturation = lerpf(1.12, 1.0, cl * 0.6 + rn * 0.3)
 	# globals for the toy shaders
 	Toys.set_global("lb_ink_light", lerpf(1.0, 0.45, _nf))

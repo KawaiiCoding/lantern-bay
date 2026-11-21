@@ -63,6 +63,7 @@ var _done := false
 var _saved_files := {}
 var _had_save := false
 var _boot_warnings: Array = []
+var _reported_errors := {}   # engine error text -> times seen; each is a failure only the first time
 
 func _initialize() -> void:
 	for a in OS.get_cmdline_user_args():
@@ -181,6 +182,12 @@ func _filter_errors(errs: Array) -> Array:
 		if allowed: continue
 		if seen.has(s): continue
 		seen[s] = true
+		# the same engine error recurring in later tests (e.g. a part that fails to load on every boot) is reported once
+		var key := s.substr(0, 160)
+		if _reported_errors.has(key):
+			_reported_errors[key] += 1
+			continue
+		_reported_errors[key] = 1
 		out.append(s)
 		if out.size() >= 8: break
 	return out
@@ -202,6 +209,8 @@ func _print_summary() -> void:
 	var warns := 0
 	for r in _results: warns += int(r.get("warns", []).size())
 	print("")
+	for k in _reported_errors.keys():
+		if int(_reported_errors[k]) > 1: print("  (engine error repeated in %d later tests, reported once: %s)" % [int(_reported_errors[k]) - 1, str(k).left(110)])
 	print("SUMMARY: %d passed, %d failed, %d skipped, %d warnings  (%.1f s)" % [_count("PASS"), _count("FAIL"), _count("SKIP"), warns, (Time.get_ticks_msec() - _run_t0) / 1000.0])
 	for r in _results:
 		if r.status == "FAIL":

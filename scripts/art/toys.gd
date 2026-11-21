@@ -619,7 +619,7 @@ static func lamp(parent: Node3D, pos: Vector3) -> Node3D:
 	add(sphere(0.05, 8), post, Vector3(0, 2.88, 0), g)
 	var l := OmniLight3D.new(); l.light_color = Color("ffd89a"); l.light_energy = 1.4; l.omni_range = 5.5
 	l.omni_attenuation = 1.3
-	l.position = Vector3(0, 2.4, 0); l.add_to_group("lamp_light"); l.set_meta("base_energy", 1.8)
+	l.position = Vector3(0, 2.4, 0); l.add_to_group("lamp_light"); l.set_meta("base_energy", 2.6)
 	g.add_child(l)
 	return g
 

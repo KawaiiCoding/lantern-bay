@@ -51,6 +51,7 @@ var sit_time := 0.0
 var sit_reward_time := 4.0         # seconds a cat must stay within reach for the first-sit-of-day heart
 var test_mode := false             # tests spawn their own cats and skip the schedule
 var spot_override := {}            # tests only: spot name -> Vector3 when there is no island
+var noise_override := -1.0         # tests only: pretend Mocha makes this much noise (>= 0)
 var ambient_id := ""               # the one cat (nearest to Mocha) allowed an ambient bubble
 
 var _rng := RandomNumberGenerator.new()
@@ -345,7 +346,7 @@ func wrong_treat(id: String, fav: String) -> String:
 	return ""
 
 func has_treat_rule(id: String) -> bool:
-	return id == "marmalade" or String(_cdata(id).get("rule", "")) == "pet_all_others"
+	return id == "marmalade" or int(_cdata(id).get("treat_needs_pets", 0)) > 0 or String(_cdata(id).get("rule", "")) == "pet_all_others"
 
 ## Marmalade: accepts a treat only once every other cat that has been out today was petted today.
 func treat_rule_ok(id: String) -> bool:
@@ -354,10 +355,13 @@ func treat_rule_ok(id: String) -> bool:
 
 func others_petted_today(id: String) -> bool:
 	_roll_seen()
+	var need := int(_cdata(id).get("treat_needs_pets", 0))   # data: "petted N other cats today"; 0 = every cat out today
+	var petted := 0
 	for oid in _seen.keys():
 		if oid == id: continue
-		if int(_peek(String(oid)).get("last_pet_day", 0)) != GameState.day: return false
-	return true
+		if int(_peek(String(oid)).get("last_pet_day", 0)) == GameState.day: petted += 1
+		elif need <= 0: return false
+	return petted >= need
 
 func _roll_seen() -> void:
 	if _seen_day != GameState.day:
@@ -493,9 +497,9 @@ func schedule_spot(id: String, slot := "", weather := "") -> String:
 	var rain_spot := String(c.get("rain_spot", ""))
 	if weather == "rain" and rain_spot != "":
 		if spot != "" or haunts.is_empty(): spot = rain_spot
-	var secret := String(c.get("secret", "")).to_lower()
-	if spot == "home" and weather == "sunny" and secret.contains("porch") and secret.contains("sunny"):
-		spot = "porch"
+	var sun_spot := String(c.get("sun_spot", ""))
+	if spot != "" and weather == "sunny" and sun_spot != "":
+		spot = sun_spot
 	if slot == "morning" and is_friend(id) and id in visiting_friends(weather):
 		spot = "porch"
 	return spot
@@ -698,13 +702,16 @@ func give_gifts() -> int:
 	for id in visiting_friends():
 		var item := _pick_gift(String(id))
 		if item == "": continue
-		GameState.add_item("shore:" + item, 1)
-		GameState.say("%s left a %s on the porch." % [bubble_name(String(id)), item_name("shore:" + item)])
+		var key := item if item.contains(":") else "shore:" + item
+		GameState.add_item(key, 1)
+		GameState.say("%s left a %s on the porch." % [bubble_name(String(id)), item_name(key)])
 		given += 1
 	if given > 0: _save()
 	return given
 
 func _pick_gift(id: String) -> String:
+	var own := String(_cdata(id).get("gift", ""))
+	if own.begins_with("shore:"): return own.substr(6)
 	var rng := GameState.day_rng(int(absi(id.hash()) % 7919) + 4001)
 	var pool := []
 	var total := 0.0

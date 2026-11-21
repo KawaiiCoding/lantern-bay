@@ -865,6 +865,7 @@ func _player_dist() -> float:
 	return _flat((p as Node3D).global_position, global_position)
 
 func _player_noise(p) -> float:
+	if sys != null and float(sys.noise_override) >= 0.0: return float(sys.noise_override)
 	if p != null and p.has_method("noise_level"):
 		return float(p.noise_level())
 	return 0.0

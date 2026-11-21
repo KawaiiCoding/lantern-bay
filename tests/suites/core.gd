@@ -354,7 +354,8 @@ func t_person_level_thresholds() -> void:
 	eq(gs.person_level(id), 0, "0 points is level 0")
 	reset_world()
 
-func t_friendship_levelup_toast() -> void:
+func t_friendship_levelup_signal() -> void:
+	# GameState.add_friendship announces a level-up: person_leveled(id, level) (People shows it in dialogue) or a toast
 	reset_world()
 	var id := "qa_person"
 	var th: Array = []
@@ -362,31 +363,38 @@ func t_friendship_levelup_toast() -> void:
 	if typeof(from_data) == TYPE_ARRAY: th = from_data
 	var first: int = int(th[0]) if th.size() > 0 else 100
 	var second: int = int(th[1]) if th.size() > 1 else 200
+	var has_signal: bool = gs.has_signal("person_leveled")
+	var ups: Array = []
 	var toasts: Array = []
-	var cb := func(t): toasts.append(str(t))
-	gs.toast.connect(cb)
+	var cb := func(pid, lvl): ups.append([pid, lvl])
+	var cbt := func(t): toasts.append(str(t))
+	if has_signal: gs.person_leveled.connect(cb)
+	gs.toast.connect(cbt)
 	var changed := [0]
 	var cb2 := func(): changed[0] += 1
 	gs.people_changed.connect(cb2)
+	var announced := func() -> int: return ups.size() if has_signal else toasts.size()
 	gs.add_friendship(id, 1)
-	eq(toasts.size(), 0, "a tiny friendship gain below level 1 must not toast")
+	eq(announced.call(), 0, "a tiny friendship gain below level 1 must not announce a level-up")
 	gs.add_friendship(id, first - 1)
 	eq(gs.person_level(id), 1, "level after reaching the first threshold")
-	eq(toasts.size(), 1, "reaching level 1 must toast exactly once")
-	if toasts.size() > 0: ok(toasts[0].contains("1") and toasts[0] != "", "level-up toast should name the level: '%s'" % toasts[0])
-	toasts.clear()
+	eq(announced.call(), 1, "reaching level 1 must announce exactly once")
+	if has_signal and ups.size() == 1:
+		eq(str(ups[0][0]), id, "person_leveled person id")
+		eq(int(ups[0][1]), 1, "person_leveled level")
+	ups.clear(); toasts.clear()
 	gs.add_friendship(id, 1)
-	eq(toasts.size(), 0, "staying inside a level must not toast")
+	eq(announced.call(), 0, "staying inside a level must not announce")
 	gs.add_friendship(id, second + 100000)
-	eq(toasts.size(), 1, "jumping several levels at once must toast once")
-	var lv: int = gs.person_level(id)
-	if toasts.size() > 0: ok(toasts[0].contains(str(lv)), "toast should show the final level %d: '%s'" % [lv, toasts[0]])
-	toasts.clear()
+	eq(announced.call(), 1, "jumping several levels at once must announce once")
+	if has_signal and ups.size() == 1: eq(int(ups[0][1]), gs.person_level(id), "person_leveled carries the final level")
+	ups.clear(); toasts.clear()
 	gs.add_friendship(id, -99999999)
 	eq(int(gs.person_state(id).points), 0, "friendship points never go below 0")
-	eq(toasts.size(), 0, "losing points must not toast")
+	eq(announced.call(), 0, "losing points must not announce a level-up")
 	ok(changed[0] >= 4, "people_changed should fire on every friendship change (fired %d)" % changed[0])
-	gs.toast.disconnect(cb)
+	if has_signal: gs.person_leveled.disconnect(cb)
+	gs.toast.disconnect(cbt)
 	gs.people_changed.disconnect(cb2)
 	eq(typeof(gs.person_state(id).points), TYPE_INT, "points is an int")
 	ok(not gs.has_perk(id, "nonexistent_perk"), "has_perk on an unknown perk")

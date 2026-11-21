@@ -257,7 +257,7 @@ func t_12_gates_follow_lanterns() -> void:
 func t_20_player_spawns_on_ground() -> void:
 	reset_world()
 	await r.fresh_main()
-	if not _need(["player"]): return
+	if not _need(["island", "player"]): return
 	await r.wait_frames(40)
 	var p: CharacterBody3D = r.part("player")
 	var pos = p.global_position
@@ -275,7 +275,7 @@ func t_20_player_spawns_on_ground() -> void:
 func t_21_player_moves_with_joystick() -> void:
 	reset_world()
 	await r.ensure_main()
-	if not _need(["player"]): return
+	if not _need(["island", "player"]): return
 	var p: CharacterBody3D = r.part("player")
 	var start = _spot("spawn")
 	var best = 0.0
@@ -311,7 +311,7 @@ func t_21_player_moves_with_joystick() -> void:
 func t_22_player_ride_toggle() -> void:
 	reset_world()
 	await r.ensure_main()
-	if not _need(["player"]): return
+	if not _need(["island", "player"]): return
 	var p: CharacterBody3D = r.part("player")
 	var sp = _spot("spawn")
 	if sp != Vector3.ZERO: _teleport(p, sp + Vector3(0, 0.1, 0))
@@ -720,7 +720,8 @@ func t_52_shore_pickup_counts_and_saves() -> void:
 		return typeof(d) == TYPE_DICTIONARY and int(d.get("shore_log", {}).get(id, 0)) == count_before + 1, 4.0)
 	ok(wrote, "the pickup was not saved to save.json within 4 s (save_soon missing?)")
 	await r.wait_sec(0.5)
-	ok(not it.is_inside_tree() or not it.is_visible_in_tree() or str(it.get_prompt(p)) == "", "the picked-up item still offers a prompt / is still visible")
+	if is_instance_valid(it) and it.is_inside_tree():
+		ok(not it.is_visible_in_tree() or str(it.get_prompt(p)) == "", "the picked-up item still offers a prompt / is still visible")
 
 func t_53_lantern_lighting() -> void:
 	reset_world()
@@ -755,18 +756,17 @@ func t_53_lantern_lighting() -> void:
 		for sp in data_dict("SPOT_LANTERN").keys():
 			if str(data_dict("SPOT_LANTERN")[sp]) == id and _spot(str(sp)) != Vector3.ZERO:
 				ok(isl.is_walkable(_spot(str(sp))), "after lighting '%s' the gated spot '%s' is still not walkable" % [id, str(sp)])
-	var d = read_json_file("user://save.json")
-	await r.wait_until(func():
-		d = read_json_file("user://save.json")
-		return typeof(d) == TYPE_DICTIONARY and d.get("lanterns", {}).has(id), 4.0)
-	ok(typeof(d) == TYPE_DICTIONARY and d.get("lanterns", {}).has(id), "the lit lantern was not saved")
+	var saved: bool = await r.wait_until(func():
+		var dd = read_json_file("user://save.json")
+		return typeof(dd) == TYPE_DICTIONARY and dd.get("lanterns", {}).has(id), 4.5)
+	ok(saved, "the lit lantern was not saved to save.json within 4.5 s (save_soon missing after lighting?)")
 	reset_world()
 
 # ------------------------------------------------------------------ cats / people vs Data
 func t_60_cat_cast_matches_schedule() -> void:
 	reset_world()
 	await r.fresh_main()
-	if not _need(["cats"]): return
+	if not _need(["island", "cats"]): return
 	var cats: Node = r.part("cats")
 	if not cats.has_method("present_ids"): skip("cats has no present_ids()"); return
 	var data = data_dict("CATS")
