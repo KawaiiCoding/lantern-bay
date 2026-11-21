@@ -169,10 +169,8 @@ void fragment() {
 static func ensure_globals() -> void:
 	if _globals_ready: return
 	_globals_ready = true
-	var have: Array = RenderingServer.global_shader_parameter_get_list()
 	for k in GLOBALS:
-		if not have.has(StringName(k)):
-			RenderingServer.global_shader_parameter_add(k, RenderingServer.GLOBAL_VAR_TYPE_FLOAT, GLOBALS[k])
+		RenderingServer.global_shader_parameter_add(k, RenderingServer.GLOBAL_VAR_TYPE_FLOAT, GLOBALS[k])
 
 static func set_global(k: String, v: float) -> void:
 	ensure_globals()

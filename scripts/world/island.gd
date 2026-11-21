@@ -986,7 +986,7 @@ func _build_lighthouse() -> void:
 		Toys.rock(_static, Vector3(q.x, SEA_Y - 0.1, q.y), 0.9 + fmod(i * 0.37, 0.8), Color("aeb6c8"), i * 1.3)
 	for k in [[-0.2, 1.6, 1.0], [0.22, 1.5, 0.8]]:
 		var a2: float = ra + k[0]
-		var q2 := _dir(a2) * (shore_r(a2) - WALL_D - k[1])
+		var q2: Vector2 = _dir(a2) * (shore_r(a2) - WALL_D - k[1])
 		Toys.rock(_static, Vector3(q2.x, -0.05, q2.y), k[2], Color("b9b4c4"), a2 * 3.0)
 		_solid_round(Vector3(q2.x, 0, q2.y), 0.65 * k[2], 1.0)
 
@@ -1168,7 +1168,7 @@ func _scatter() -> void:
 		var r := _rng.randf_range(3.0, shore_r(t) - BEACH_W - 0.2)
 		var p := Vector2(cos(t) * r, sin(t) * r)
 		if not _free(p, 0.6, BEACH_W + 0.2, 99.0, 1.4): continue
-		var dots := [Color("f4a9a8"), Color("fff1b8"), Color(0, 0, 0, 0), Color("c9b6e4")][placed % 4]
+		var dots: Color = [Color("f4a9a8"), Color("fff1b8"), Color(0, 0, 0, 0), Color("c9b6e4")][placed % 4]
 		Toys.bush(_static, Vector3(p.x, 0, p.y), _rng.randf_range(0.7, 1.05), [Color("9fd39a"), Color("8fca8a"), Color("a9d79a")][placed % 3], dots)
 		_solid_round(Vector3(p.x, 0, p.y), 0.55, 1.0)
 		placed += 1
