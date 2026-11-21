@@ -4,6 +4,7 @@ extends CharacterBody3D
 ##   rig (yaw) -> tilt (bob, hop, lean/bank) -> squash (scale) -> bear_walk | bear_sit | moped
 ## Self-test: `godot --path . -- test=player [demo=walk|ride|sit] shot=/tmp/x.png wait=3`
 
+const ShibaArt := preload("res://scripts/player/shiba.gd")
 const WALK_SPEED := 4.2
 const SNEAK_SPEED := 1.6
 const SNEAK_STICK := 0.46          # stick length at or below this = sneak (keyboard Shift gives 0.45)
@@ -45,19 +46,22 @@ var _bear_sit: Node3D
 var _moped: Node3D
 var _beam: SpotLight3D
 var _shape: CapsuleShape3D
-var _dust: CPUParticles3D
-var _exhaust: CPUParticles3D
+var _puffs: Array[CPUParticles3D] = []   # small pool of one-shot soft puffs (start/stop/turn/hop)
+var _puff_i := 0
+var _turn_cd := 0.0
+var _was_idle := true
 var _wind: CPUParticles3D
-var _steps: Array[CPUParticles3D] = []
+static var _soft_tex: Texture2D
 var _splash: CPUParticles3D
 var _blob: MeshInstance3D
 var _scarves: Array[MeshInstance3D] = []
-var _step_side := 0
-var _last_sw := 0.0
 var _splash_cd := 0.0
 var _legs: Array[MeshInstance3D] = []
 var _arms: Array[MeshInstance3D] = []
 var _heads: Array[Node3D] = []
+var _tails: Array[Node3D] = []
+var _fronts: Array[MeshInstance3D] = []
+var _wag := 0.0                    # 0..1, tail wag happiness (interactions, nearby friends)
 
 var _stick := 0.0
 var _yaw := 0.0
@@ -99,9 +103,8 @@ func _ready() -> void:
 	_tilt = Node3D.new(); _rig.add_child(_tilt)
 	_squash = Node3D.new(); _tilt.add_child(_squash)
 
-	_bear_walk = Toys.bear(_squash, false)
-	_bear_sit = Toys.bear(_squash, true)
-	_add_sit_feet(_bear_sit)
+	_bear_walk = ShibaArt.build(_squash, false)
+	_bear_sit = ShibaArt.build(_squash, true)
 	_bear_sit.visible = false
 	_scan_bear(_bear_walk, true)
 	_scan_bear(_bear_sit, false)
@@ -112,22 +115,11 @@ func _ready() -> void:
 		if c is SpotLight3D: _beam = c
 	if _beam: _beam.visible = false
 
-	_dust = _make_dust(18, 0.55, false)
-	add_child(_dust)
-	_exhaust = _make_dust(10, 0.9, false)
-	_exhaust.color_ramp.set_color(0, Color(0.93, 0.92, 0.95, 0.7))
-	_exhaust.initial_velocity_min = 0.2; _exhaust.initial_velocity_max = 0.6
-	_exhaust.scale_amount_min = 0.35; _exhaust.scale_amount_max = 0.6
-	_exhaust.gravity = Vector3(0, 0.8, 0)
-	add_child(_exhaust)
+	for i in 4:
+		var pf := _make_dust(4, 0.4, true)
+		add_child(pf); _puffs.append(pf)
 	_wind = _make_wind()
 	add_child(_wind)
-	for i in 2:
-		var st := _make_dust(6, 0.5, true)
-		st.scale_amount_min = 0.6; st.scale_amount_max = 0.95
-		st.initial_velocity_min = 0.3; st.initial_velocity_max = 0.8
-		st.direction = Vector3(0, 0.4, 0); st.spread = 85.0
-		add_child(st); _steps.append(st)
 	_splash = _make_splash()
 	add_child(_splash)
 	_blob = _make_blob()
@@ -143,25 +135,17 @@ func _ready() -> void:
 	_test = args.get("test", "") == "player"
 	if _test: _demo = args.get("demo", "walk")
 
-func _add_sit_feet(b: Node3D) -> void:
-	var fur := Toys.mat(Color("d9a877")); var pad := Toys.mat(Color("f3dcc0"), 0.85, 0.0)
-	for s in [-1, 1]:
-		Toys.add(Toys.capsule(0.13, 0.4), fur, Vector3(0.22 * s, 0.13, 0.32), b, Vector3.ONE, Vector3(PI / 2, 0, 0.15 * s))
-		Toys.add(Toys.sphere(0.07), pad, Vector3(0.22 * s, 0.14, 0.52), b, Vector3(1, 1, 0.4))
-
-## Find the parts of a Toys.bear we animate (legs, arms, head) by their build positions.
-func _scan_bear(b: Node3D, with_limbs: bool) -> void:
+## Collect the tagged parts of a Shiba (meta "part") that we animate.
+func _scan_bear(b: Node3D, _with_limbs := true) -> void:
 	for c in b.get_children():
-		if c is MeshInstance3D:
-			var p: Vector3 = c.position
-			if with_limbs and absf(p.y - 0.12) < 0.01 and absf(absf(p.x) - 0.2) < 0.01:
-				_legs.append(c); c.set_meta("base", p)
-			elif with_limbs and absf(p.y - 0.72) < 0.01 and absf(absf(p.x) - 0.38) < 0.01:
-				_arms.append(c); c.set_meta("base", c.rotation)
-			elif with_limbs and absf(p.y - 0.68) < 0.01 and absf(p.z - 0.38) < 0.01:
-				_scarves.append(c); c.set_meta("base", c.rotation)
-		elif c is Node3D and absf(c.position.y - 1.25) < 0.01:
-			_heads.append(c)
+		var part := str(c.get_meta("part", ""))
+		match part:
+			"leg": _legs.append(c); c.set_meta("base", c.position)
+			"arm": _arms.append(c); c.set_meta("base", c.rotation)
+			"front": _fronts.append(c); c.set_meta("base", c.position); c.set_meta("base_rot", c.rotation)
+			"scarf": _scarves.append(c); c.set_meta("base", c.rotation)
+			"head": _heads.append(c)
+			"tail": _tails.append(c)
 
 func _cast_shadows(n: Node) -> void:
 	if n is GeometryInstance3D: n.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
@@ -189,8 +173,8 @@ func _make_blob() -> MeshInstance3D:
 ## Thin streaks that stream past while riding fast.
 func _make_wind() -> CPUParticles3D:
 	var p := CPUParticles3D.new()
-	p.amount = 10; p.lifetime = 0.35; p.local_coords = false; p.emitting = false
-	var m := Toys.capsule(0.018, 0.9); m.radial_segments = 6; m.rings = 2
+	p.amount = 4; p.lifetime = 0.3; p.local_coords = false; p.emitting = false
+	var m := Toys.capsule(0.012, 0.8); m.radial_segments = 6; m.rings = 2
 	var mt := StandardMaterial3D.new()
 	mt.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	mt.vertex_color_use_as_albedo = true
@@ -204,7 +188,7 @@ func _make_wind() -> CPUParticles3D:
 	p.initial_velocity_min = 7.0; p.initial_velocity_max = 10.0
 	var g := Gradient.new()
 	g.set_color(0, Color(1, 1, 1, 0.0)); g.set_color(1, Color(1, 1, 1, 0.0))
-	g.add_point(0.35, Color(1, 1, 1, 0.55))
+	g.add_point(0.35, Color(1, 1, 1, 0.35))
 	p.color_ramp = g
 	return p
 
@@ -227,29 +211,43 @@ func _make_splash() -> CPUParticles3D:
 	p.color_ramp = g
 	return p
 
+## Soft round alpha sprite shared by all puffs (no visible "balls").
+static func _soft() -> Texture2D:
+	if _soft_tex: return _soft_tex
+	var img := Image.create(32, 32, false, Image.FORMAT_RGBA8)
+	for y in 32:
+		for x in 32:
+			var d := Vector2(x - 15.5, y - 15.5).length() / 15.5
+			var a := clampf(1.0 - d, 0.0, 1.0)
+			img.set_pixel(x, y, Color(1, 1, 1, a * a * (3.0 - 2.0 * a)))
+	_soft_tex = ImageTexture.create_from_image(img)
+	return _soft_tex
+
 func _make_dust(amount: int, life: float, one_shot: bool) -> CPUParticles3D:
 	var p := CPUParticles3D.new()
-	p.amount = amount; p.lifetime = life; p.one_shot = one_shot; p.explosiveness = 0.9 if one_shot else 0.0
+	p.amount = amount; p.lifetime = life; p.one_shot = one_shot; p.explosiveness = 0.85 if one_shot else 0.0
 	p.local_coords = false
 	p.emitting = false
-	var m := Toys.sphere(0.14); m.radial_segments = 10; m.rings = 6
+	var q := QuadMesh.new(); q.size = Vector2(0.32, 0.2)   # flattened soft puff
 	var mt := StandardMaterial3D.new()
+	mt.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mt.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
 	mt.vertex_color_use_as_albedo = true
 	mt.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mt.roughness = 1.0
-	m.material = mt
-	p.mesh = m
-	p.direction = Vector3(0, 1, 0); p.spread = 70.0
-	p.initial_velocity_min = 0.4; p.initial_velocity_max = 1.4
-	p.gravity = Vector3(0, 0.6, 0)
-	p.damping_min = 2.0; p.damping_max = 3.0
-	p.scale_amount_min = 0.6; p.scale_amount_max = 1.2
-	var sc := Curve.new(); sc.add_point(Vector2(0, 0.4)); sc.add_point(Vector2(0.3, 1.0)); sc.add_point(Vector2(1, 0.2))
+	mt.albedo_texture = _soft()
+	q.material = mt
+	p.mesh = q
+	p.direction = Vector3(0, 0.25, 0); p.spread = 80.0
+	p.initial_velocity_min = 0.5; p.initial_velocity_max = 1.0
+	p.gravity = Vector3(0, 0.3, 0)
+	p.damping_min = 2.5; p.damping_max = 3.5
+	p.scale_amount_min = 0.7; p.scale_amount_max = 1.1
+	var sc := Curve.new(); sc.add_point(Vector2(0, 0.5)); sc.add_point(Vector2(0.35, 1.0)); sc.add_point(Vector2(1, 1.2))
 	p.scale_amount_curve = sc
 	var g := Gradient.new()
-	g.set_color(0, Color(1.0, 0.95, 0.86, 0.85)); g.set_color(1, Color(1.0, 0.97, 0.92, 0.0))
+	g.set_color(0, Color(1.0, 0.97, 0.9, 0.5)); g.set_color(1, Color(1.0, 0.97, 0.92, 0.0))
 	p.color_ramp = g
-	p.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE; p.emission_sphere_radius = 0.18
+	p.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE; p.emission_sphere_radius = 0.12
 	return p
 
 func _build_camera() -> void:
@@ -285,7 +283,9 @@ func setup(m) -> void:
 	var isl = main.get("island") if main else null
 	if is_instance_valid(isl) and isl.has_method("ground_y"): p.y = isl.ground_y(p.x, p.z)
 	global_position = p + Vector3(0, 0.05, 0)
-	_yaw = PI   # face the camera on spawn
+	if _test and _demo == "portrait" and (main == null or main.get("island") == null):
+		global_position = Vector3(16, 0.05, 16)   # clear of other systems' test NPCs
+	_yaw = 0.0   # face the camera (+Z) on spawn
 	_rig.rotation.y = _yaw
 	_cam_focus = global_position + Vector3(0, CAM_FOCUS_UP, 0)
 	_place_camera(0.0, true)
@@ -323,7 +323,7 @@ func sit(on: bool) -> void:
 	_bear_sit.visible = on or riding
 	_bear_sit.position = Vector3.ZERO
 	_squash_pulse(Vector3(1.12, 0.84, 1.12) if on else Vector3(0.92, 1.12, 0.92))
-	if on: _puff(global_position + Vector3(0, 0.1, 0), 6)
+	if on: _puff(global_position + Vector3(0, 0.08, 0), 3)
 
 func face(t: Vector3) -> void:
 	var d := t - global_position
@@ -341,6 +341,7 @@ func _on_action() -> void:
 		var t := target
 		face(t.global_position)
 		_squash_pulse(Vector3(1.06, 0.94, 1.06))
+		_wag = 1.0
 		t.interact(self)
 		_last_prompt = "__none__"   # the thing may have changed its prompt; refresh next frame
 	elif sitting:
@@ -366,7 +367,7 @@ func _hop_toggle_ride() -> void:
 	tw.tween_property(_tilt, "position:y", 0.0, 0.17).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 	tw.parallel().tween_property(_squash, "scale", Vector3.ONE, 0.17)
 	tw.tween_callback(func():
-		_puff(global_position + Vector3(0, 0.1, 0), 8)
+		_puff(global_position + Vector3(0, 0.08, 0), 4)
 		_hopping = false
 		_squash_pulse(Vector3(1.14, 0.84, 1.14)))
 
@@ -385,6 +386,10 @@ func _set_riding_visual(on: bool) -> void:
 	_bear_walk.visible = not on and not sitting
 	_bear_sit.visible = on or sitting
 	_bear_sit.position = Vector3(0, 1.08, -0.32) if on else Vector3.ZERO
+	for f in _fronts:   # paws up on the handlebars while riding
+		var bp: Vector3 = f.get_meta("base")
+		f.position = Vector3(bp.x * 1.3, 0.62, 0.42) if on else bp
+		f.rotation = Vector3(-1.15, 0, -0.25 * signf(bp.x)) if on else f.get_meta("base_rot")
 	if on:
 		_moped.scale = Vector3(0.6, 0.6, 0.6)
 		create_tween().tween_property(_moped, "scale", Vector3.ONE, 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
@@ -455,7 +460,7 @@ func _physics_process(dt: float) -> void:
 	var moving := hs > 1.2
 	if _was_moving and hs < 0.35 and not riding and not sitting:
 		_squash_pulse(Vector3(1.08, 0.9, 1.08))
-		_puff(global_position + _rig.global_basis.z * 0.25 + Vector3(0, 0.08, 0), 5)
+		_puff(global_position + _rig.global_basis.z * 0.2 + Vector3(0, 0.06, 0), 3)
 		_was_moving = false
 	elif moving:
 		_was_moving = true
@@ -541,12 +546,20 @@ func _process(dt: float) -> void:
 	var sw := sin(_phase)
 	for leg in _legs:
 		var base: Vector3 = leg.get_meta("base")
-		var s := signf(base.x)
+		var s := float(leg.get_meta("swing", signf(base.x)))
 		leg.position = base + Vector3(0, maxf(0.0, -sw * s) * 0.07 * _move_amt, sw * s * 0.14 * _move_amt)
 	for arm in _arms:
 		var rb: Vector3 = arm.get_meta("base")
 		var s2 := signf(arm.position.x)
 		arm.rotation = rb + Vector3(-sw * s2 * 0.45 * _move_amt, 0, 0)
+
+	# tail: wags when happy (just interacted / something friendly close), sways while walking
+	var want_wag := 0.0
+	if is_instance_valid(target): want_wag = 0.55
+	_wag = maxf(want_wag, _wag - dt * 0.35)
+	for tl in _tails:
+		tl.rotation.y = sin(_t * 15.0) * 0.42 * _wag + sin(_phase * 0.5) * 0.22 * _move_amt + sin(_t * 1.3) * 0.05
+		tl.rotation.x = -0.08 * _move_amt + sin(_t * 15.0 + 0.8) * 0.06 * _wag
 
 	# idle breathing (on top of any squash tween, which drives _squash)
 	var breathe := sin(_t * 2.3) * (0.022 if hs < 0.3 else 0.006)
@@ -574,24 +587,18 @@ func _process(dt: float) -> void:
 		sc.rotation = sb + Vector3(-0.35 * flutter + sin(_t * 13.0) * 0.12 * flutter + sin(_t * 1.7) * 0.04,
 			0, sin(_t * 9.0 + 1.0) * 0.18 * flutter)
 
-	# footstep puffs: one per step when walking (not sneaking)
-	if not riding and not sitting and is_on_floor() and _move_amt > 0.4:
-		if signf(sw) != signf(_last_sw) and _last_sw != 0.0:
-			_step_side = 1 - _step_side
-			var st := _steps[_step_side]
-			st.global_position = _rig.global_transform * Vector3(0.2 * (1 if _step_side == 0 else -1), 0.05, 0.05)
-			st.restart()
-			_try_splash()
-	_last_sw = sw
-
-	# moped: wheel dust, exhaust, wind streaks
-	var rig_x := _rig.global_transform
-	_dust.global_position = rig_x * Vector3(0, 0.15, -1.05)
-	_dust.emitting = riding and hs > 2.0 and is_on_floor()
-	_exhaust.global_position = rig_x * Vector3(0.22, 0.42, -1.2)
-	_exhaust.direction = -rig_x.basis.z + Vector3(0, 0.4, 0)
-	_exhaust.emitting = riding and not _hopping
-	_exhaust.speed_scale = 1.0 + clampf(hs / 6.0, 0.0, 1.5)
+	# soft puffs only on start, stop (see _physics_process) and sharp turns: no constant streams
+	_turn_cd = maxf(0.0, _turn_cd - dt)
+	var grounded := is_on_floor() and not sitting and not _hopping
+	if grounded and _was_idle and hs > 1.2:
+		_puff(_rig.global_transform * Vector3(0, 0.06, -1.0 if riding else -0.15), 4 if riding else 3)
+		_try_splash()
+	if grounded and absf(_turn_rate) > (2.2 if riding else 3.2) and hs > 2.5 and _turn_cd <= 0.0:
+		_turn_cd = 0.45
+		_puff(_rig.global_transform * Vector3(0, 0.06, -0.9 if riding else -0.1), 3)
+	_was_idle = hs < 0.4
+	if not riding and is_on_floor() and _move_amt > 0.4 and signf(sw) != signf(sin(_phase - dt * 6.0)):
+		_try_splash()   # stepping into shallow foam
 	var fast := riding and hs > WALK_SPEED * 1.2
 	_wind.emitting = fast
 	if fast:
@@ -599,9 +606,8 @@ func _process(dt: float) -> void:
 		_wind.global_position = global_position + vd * 2.2 + Vector3(0, 1.1, 0)
 		_wind.global_basis = Basis.looking_at(vd, Vector3.UP)
 		_wind.direction = Vector3(0, 0, 1)   # local: backward relative to the emitter facing
-	if riding and hs > 2.0:
-		_splash_cd -= dt
-		if _splash_cd <= 0.0: _splash_cd = 0.18; _try_splash()
+	_splash_cd = maxf(0.0, _splash_cd - dt)
+	if riding and hs > 2.0 and _splash_cd <= 0.0: _try_splash()
 
 	# blob shadow shrinks while airborne (hop)
 	var air := clampf(_tilt.position.y, 0.0, 1.0)
@@ -635,6 +641,13 @@ func _place_camera(dt: float, snap: bool) -> void:
 		_cam_dist = lerpf(_cam_dist, want_dist, 1.0 - exp(-2.0 * dt))
 		var goal := global_position + Vector3(0, CAM_FOCUS_UP, -CAM_FOCUS_FWD) + _cam_ahead
 		_cam_focus = _cam_focus.lerp(goal, 1.0 - exp(-CAM_LAG * dt))
+	if _test and _demo == "portrait":
+		var face_at := global_position + Vector3(0, 1.2, 0)
+		var fwd := _rig.global_basis.z
+		camera.global_position = face_at + fwd * 3.3 + Vector3(0, 0.8, 0)
+		camera.look_at(face_at + Vector3(0, -0.1, 0), Vector3.UP)
+		if cam_attr: cam_attr.dof_blur_far_distance = 5.0; cam_attr.dof_blur_near_distance = 1.0
+		return
 	var p := deg_to_rad(CAM_PITCH)
 	camera.global_position = _cam_focus + Vector3(0, sin(p), cos(p)) * _cam_dist
 	camera.look_at(_cam_focus, Vector3.UP)
@@ -654,6 +667,8 @@ func _try_splash() -> void:
 		var sl = isl.get("sea_level")
 		if sl != null: wet = global_position.y < float(sl) + 0.08
 	if not wet: return
+	if _splash_cd > 0.0: return
+	_splash_cd = 0.22
 	_splash.global_position = global_position + Vector3(0, 0.05, 0)
 	_splash.restart()
 
@@ -665,15 +680,12 @@ func _squash_pulse(s: Vector3) -> void:
 	_squash_tw.tween_property(_squash, "scale", Vector3.ONE, 0.28).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 func _puff(at: Vector3, n: int) -> void:
-	var p := _make_dust(n, 0.6, true)
-	p.initial_velocity_min = 0.8; p.initial_velocity_max = 1.8
-	p.direction = Vector3(0, 0.3, 0); p.spread = 90.0
-	var parent: Node = main if main else get_parent()
-	if parent == null: return
-	parent.add_child(p)
+	if _puffs.is_empty(): return
+	var p := _puffs[_puff_i]
+	_puff_i = (_puff_i + 1) % _puffs.size()
+	p.amount = clampi(n, 1, 6)
 	p.global_position = at
-	p.emitting = true
-	get_tree().create_timer(1.2).timeout.connect(p.queue_free)
+	p.restart()
 
 func _args() -> Dictionary:
 	var a := {}
@@ -716,8 +728,13 @@ func _demo_move() -> Vector2:
 func _full_checks(a: float, b: float) -> void:
 	var at := func(x: float) -> bool: return a < x and b >= x
 	if at.call(0.8):
-		_check("prompt Pet in range", is_instance_valid(target) and str(target.get_prompt(self)) == "Pet")
+		_check("finder has a prompt in range", is_instance_valid(target) and str(target.get_prompt(self)) != "")
+		# act on our own test node only (other systems' interactables may open dialogue / set busy)
+		for n in get_tree().get_nodes_in_group("interactable"):
+			if is_instance_valid(n) and n.has_meta("player_test") and str(n.prompt) == "Pet": target = n
+		_check("test Pet found", is_instance_valid(target) and target.has_meta("player_test"))
 		_on_action()
+		_check("interact keeps player free", not busy)
 	if at.call(1.0): sit(true); _check("sit", sitting)
 	if at.call(1.15): _check("sit holds while idle", sitting)
 	if at.call(1.7): _check("moving stands up", not sitting)

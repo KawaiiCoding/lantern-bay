@@ -9,6 +9,7 @@ var color := Color("f2b880")
 
 func _ready() -> void:
 	add_to_group("interactable")
+	set_meta("player_test", true)
 	var body := Toys.add(Toys.sphere(0.35), Toys.mat(color), Vector3(0, 0.35, 0), self, Vector3(1, 0.85, 1))
 	body.name = "Body"
 
