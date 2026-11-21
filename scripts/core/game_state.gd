@@ -152,6 +152,7 @@ func learn_cat_fact(id: String, fact: String) -> void:
 
 # ---------------- townsfolk
 signal people_changed()
+signal person_leveled(id: String, level: int)
 func person_state(id: String) -> Dictionary:
 	if not people.has(id):
 		people[id] = {"points": 0, "last_talk_day": 0, "last_gift_day": 0, "seen_lines": [], "perks": [], "events": []}
@@ -173,9 +174,7 @@ func add_friendship(id: String, n: int, why := "") -> void:
 	people_changed.emit()
 	var after := person_level(id)
 	if after > before:
-		say("%s and Mocha are closer now (level %d)." % [id.capitalize(), after])
-	elif why != "":
-		pass
+		person_leveled.emit(id, after)   # People explains it inside the dialogue (no toast on top)
 ## True when a person's perk is unlocked (perk ids defined in Data.PEOPLE[id].perks).
 func has_perk(id: String, perk: String) -> bool:
 	return perk in person_state(id).perks

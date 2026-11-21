@@ -122,7 +122,7 @@ func t_01_boot_no_errors() -> void:
 	await r.wait_frames(30)
 	var present: Array = []
 	var missing: Array = []
-	var parts = m.get("PARTS")
+	var parts = m.get_script().get_script_constant_map().get("PARTS", null)
 	if typeof(parts) == TYPE_ARRAY:
 		for pp in parts:
 			var id: String = pp[0]
@@ -319,7 +319,6 @@ func t_22_player_ride_toggle() -> void:
 	ib.ride_pressed.emit()
 	await r.wait_frames(3)
 	ok(bool(p.get("riding")), "ride_pressed did not start riding")
-	if p.has_method("noise_level"): ok(p.noise_level() >= 1.0 or true, "")
 	ib.ride_pressed.emit()
 	await r.wait_frames(3)
 	ok(not bool(p.get("riding")), "ride_pressed again did not stop riding")
@@ -574,7 +573,6 @@ func t_41_rods_and_cosmetics() -> void:
 		res = eco.buy("rod:3")
 		ok(not bool(res.get("ok", true)) and gs.rod_level == 2, "rod 3 needs the %s lantern but could be bought without it" % need)
 		eq(gs.coins, before, "refused rod 3 purchase must not take yen")
-		if eco.has_method("shop_ids"): ok(not ("rod:3" in eco.shop_ids()) or true, "")
 		gs.lanterns[need] = true
 		res = eco.buy("rod:3")
 		ok(bool(res.get("ok", false)), "rod 3 should be buyable once the %s lantern is lit: %s" % [need, str(res)])
@@ -840,7 +838,6 @@ func t_61_people_follow_routines() -> void:
 		await r.wait_sec(0.6)
 		if dlg != null and dlg.get("active") == true: warn("dialogue still active 1.2 s after talk() and close()")
 		if p != null: ok(not bool(p.get("busy")), "player.busy stayed true after talking to Pip (softlock)")
-		ok(not gs.paused or true, "")
 		gs.set_paused(false)
 		ok(int(gs.person_state("pip").points) >= pts_before, "talking to Pip reduced his friendship points")
 	reset_world()

@@ -515,7 +515,7 @@ func _weights() -> Dictionary:
 	if sys.cur_weather() == "rain":
 		w["wander"] = float(w["wander"]) * 0.6
 	# approach: friendly cats come over to a calm, close player
-	var ok := p != null and not scares and not pinned and not following and _approach_cd <= 0.0 \
+	var ok: bool = p != null and not scares and not pinned and not following and _approach_cd <= 0.0 \
 		and pd < 7.0 and pd > 1.8 and _flat(_pp(), home) < 9.0 and not bool(p.get("riding")) \
 		and _player_noise(p) < 0.6 and sys.cats_near_player(5.0, self) == 0
 	if not ok: w["approach"] = 0.0

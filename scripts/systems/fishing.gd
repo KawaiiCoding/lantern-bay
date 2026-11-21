@@ -23,6 +23,13 @@ const FALLBACK_SPOTS := {"pier_end": Vector3(0, 0.5, -2.6), "beach": Vector3(-3,
 const RELEASE_AT := 0.36           # cast: when the bobber leaves the rod
 const FLY_TIME := 0.55
 const LANDING_TIME := 0.7
+## Relaxed tuning (owner): generous bite windows, few fake-outs, calm fights.
+const RELAX_WINDOW_BONUS := 0.3     # added to Data.ROD bite_window (Lv1 0.7 -> 1.0, Lv2 1.15, Lv3 1.2)
+const MAX_NIBBLES := 2
+const REEL_HOLD := Vector2(2.4, 4.4) # seconds of holding for small .. big fish (fights ~3-6 s with easing)
+const SURGE_WARN := 0.45            # telegraph before each surge
+const SNAP_AFTER := 1.4             # seconds held at 100% tension before the line goes
+const SOFT_RED := Color("c4504a")
 
 var main: Node
 var ui: CanvasLayer
@@ -76,6 +83,10 @@ var _shadow_r := 3.0
 var _shadow_pos := Vector3.ZERO
 var _shadow_prev := Vector3.ZERO
 var _bite_window := 0.7
+var _misses := 0
+var _shadow_start_r := 3.2
+var _shadow_fade := 0.0
+var _test_eager_done := false
 
 # reel
 var _prog := 0.0
@@ -91,6 +102,7 @@ var _fish_pos := Vector3.ZERO
 var _fish_lat := 0.0
 var _fish_dir := 1.0
 var _shot_reel_done := false
+var _over_t := 0.0
 
 # ---------------------------------------------------------------- setup
 func setup(m: Node) -> void:
@@ -161,6 +173,8 @@ func begin(sp: Node3D, p: Node3D) -> void:
 	_press_frame = Engine.get_process_frames()
 	_auto_hold = false
 	_shot_reel_done = false
+	_test_eager_done = false
+	_misses = 0
 	_pending_toasts.clear()
 	if player and player.has_method("set_busy"): player.set_busy(true)
 	_origin = player.global_position if player else sp.global_position
@@ -296,21 +310,33 @@ func _tick_cast(_dt: float) -> void:
 		_slack = 0.1
 		if f >= 1.0:
 			_bobber.rotation = Vector3.ZERO
-			sfx.play("plop", randf_range(0.95, 1.05))
+			sfx.play("plop", randf_range(0.95, 1.05), -3.0)
 			Fx.ripple(_rig, _target, 0.1, 0.8, 0.8)
 			Fx.ripple(_rig, _target, 0.05, 0.45, 0.6)
-			Fx.splash(_rig, _target, 5, 0.4)
-			_start_wait()
+			_start_wait(false)
 
 # ---------------------------------------------------------------- wait + nibbles
-func _start_wait() -> void:
+## linger = the same fish stays close after a missed bite, so a retry comes quickly.
+func _start_wait(linger: bool) -> void:
 	_set_state(S.WAITING)
 	var testing := not _test.is_empty()
 	var fw := FishRoll.pair("FISH_WAIT", Vector2(2.0, 8.0))
-	var fnb := FishRoll.pair("FISH_NIBBLES", Vector2(0, 3))
-	_wait = 0.8 if testing else randf_range(fw.x, maxf(fw.x, fw.y))
-	var n := randi_range(int(fnb.x), maxi(int(fnb.x), int(fnb.y)))
-	if testing: n = int(_test.get("nibbles", "1"))
+	var max_nib := mini(int(FishRoll.pair("FISH_NIBBLES", Vector2(0, 3)).y), MAX_NIBBLES)
+	var n := 0
+	if linger:
+		_wait = randf_range(1.5, 3.0)
+		n = 1 if randf() < 0.3 else 0
+		_shadow_start_r = maxf(_shadow_r, 1.6)
+	else:
+		_wait = randf_range(fw.x, maxf(fw.x, fw.y))
+		var r := randf()                     # mostly 0-1 fake-outs, sometimes 2
+		n = 0 if r < 0.45 else (1 if r < 0.85 else 2)
+		_shadow_ang = randf() * TAU
+		_shadow_start_r = 3.2
+	n = mini(n, max_nib)
+	if testing:
+		_wait = 0.8
+		n = int(_test.get("nibbles", "1"))
 	n = mini(n, int(_wait / 0.7))
 	_nibbles = []
 	for i in n:
@@ -318,26 +344,26 @@ func _start_wait() -> void:
 	if n > 0: _nibbles[n - 1] = minf(_nibbles[n - 1], _wait - 0.5)
 	_nibble_i = 0
 	_nibble_t = -1.0
-	_shadow_ang = randf() * TAU
-	_shadow_r = 3.2
+	_shadow_r = _shadow_start_r
+	_shadow_fade = 1.0 if linger else 0.0
 	_slack = 0.6
 
 func _tick_wait(dt: float) -> void:
 	var p := clampf(_t / _wait, 0.0, 1.0)
-	var r := lerpf(3.2, 0.95, ease(p, 0.7))
+	var r := lerpf(_shadow_start_r, 0.95, ease(p, 0.7))
 	var r_eff := r
+	_shadow_fade = minf(1.0, _shadow_fade + dt / 0.8)
 	if _nibble_t >= 0.0:
 		_nibble_t += dt
 		var k := clampf(_nibble_t / 0.5, 0.0, 1.0)
-		r_eff = lerpf(r, 0.2, sin(PI * k))
+		r_eff = lerpf(r, 0.3, sin(PI * k))
 		if not _nibble_plipped and _nibble_t > 0.2:
 			_nibble_plipped = true
-			sfx.play("plip", randf_range(0.92, 1.12))
-			Fx.ripple(_rig, _target, 0.08, 0.5, 0.55, 0.8)
-			Input.vibrate_handheld(15)
+			sfx.play("plip", randf_range(0.95, 1.1), -5.0)
+			Fx.ripple(_rig, _target, 0.06, 0.35, 0.5, 0.6)
 		if _nibble_t > 0.5: _nibble_t = -1.0
 	_shadow_r = r_eff
-	_shadow_ang += dt * 1.1 / maxf(r, 0.8)
+	_shadow_ang += dt * 0.9 / maxf(r, 0.8)
 	_shadow_prev = _shadow_pos
 	_shadow_pos = _target + Vector3(cos(_shadow_ang), 0, sin(_shadow_ang)) * r_eff
 	_shadow_pos.y = _water_y + 0.03
@@ -345,27 +371,37 @@ func _tick_wait(dt: float) -> void:
 		_nibble_i += 1
 		_nibble_t = 0.0
 		_nibble_plipped = false
-		if _test.get("result", "") == "eager": _on_action_pressed.call_deferred()
+		if _test.get("result", "") == "eager" and not _test_eager_done:
+			_test_eager_done = true
+			_on_action_pressed.call_deferred()
 	if InputBridge.move.length() > 0.45 or (_test.get("result", "") == "cancel" and _t > 0.4):
 		_end("Reeled in.", "plop"); return
 	if _t >= _wait: _start_bite()
 
+## Tapped on a nibble: this fish flees ("Too eager."). The line stays in; another fish wanders over.
 func _scare() -> void:
-	sfx.play("splash", 1.4, -6.0)
-	Fx.splash(_rig, _shadow_pos, 4, 0.35)
-	_end("Too eager.", "miss")
+	sfx.play("splash", 1.4, -10.0)
+	Fx.ripple(_rig, _shadow_pos, 0.1, 0.7, 0.6, 0.7)
+	ui.flash("Too eager.", SOFT_RED)
+	_misses = 0
+	_fish = FishRoll.roll(spot_name, _test, _people())
+	_start_wait(false)
+	if _test.get("result", "") == "eager": _test["result"] = "cancel"
 
 # ---------------------------------------------------------------- bite
 func _start_bite() -> void:
 	_set_state(S.BITE)
 	var rod := FishRoll.rod()
-	_bite_window = float(rod.bite_window) + FishRoll.perk(_people(), "bite_window_bonus")
-	if int(_fish.get("rarity", 1)) >= 3: _bite_window -= FishRoll.num("BITE_WINDOW_RARE_PENALTY", 0.2)
-	_bite_window = maxf(_bite_window, 0.3)
-	sfx.play("plunge"); sfx.play("splash", 1.0, -2.0)
-	Fx.splash(_rig, _target, 10, 1.0)
-	_nudge(0.1)
-	Input.vibrate_handheld(70)
+	# relaxed base: Lv1 commons get >= 1.0 s, rares >= 0.8 s; rod upgrades and perks still add on top
+	_bite_window = float(rod.bite_window) + RELAX_WINDOW_BONUS + FishRoll.perk(_people(), "bite_window_bonus")
+	if int(_fish.get("rarity", 1)) >= 3:
+		_bite_window = maxf(_bite_window - FishRoll.num("BITE_WINDOW_RARE_PENALTY", 0.2), 0.8)
+	else:
+		_bite_window = maxf(_bite_window, 1.0)
+	sfx.play("plunge", 1.0, -3.0); sfx.play("splash", 1.0, -8.0)
+	Fx.splash(_rig, _target, 6, 0.6)
+	_nudge(0.02)
+	Input.vibrate_handheld(40)
 	_slack = 0.0
 	var cam := get_viewport().get_camera_3d()
 	if cam: ui.show_bite(cam.unproject_position(_target))
@@ -375,37 +411,49 @@ func _start_bite() -> void:
 func _tick_bite(_dt: float) -> void:
 	_shadow_prev = _shadow_pos
 	_shadow_pos = _shadow_pos.lerp(_target + Vector3(0, 0.03, 0), 0.3)
-	if not _test.is_empty() and _test.get("result", "") != "miss" and _t > 0.18: _start_reel(); return
-	if _t > _bite_window:
-		_end("It got away.", "miss")
+	if not _test.is_empty() and _test.get("result", "") != "miss" and _t > 0.25: _start_reel(); return
+	if _t > _bite_window: _miss()
+
+## Missed the bite: "It swam off." The shadow lingers nearby and tries again soon (3rd miss: it leaves).
+func _miss() -> void:
+	ui.hide_bite(); ui.set_catcher(false)
+	sfx.play("miss", 1.0, -6.0)
+	Fx.ripple(_rig, _target, 0.1, 0.6, 0.6, 0.6)
+	_misses += 1
+	if _misses >= 3:
+		_end("It swam off.", ""); return
+	ui.flash("It swam off.", SOFT_RED)
+	_shadow_ang = atan2(_shadow_pos.z - _target.z, _shadow_pos.x - _target.x) + 0.6
+	_shadow_r = 1.8
+	_start_wait(true)
 
 # ---------------------------------------------------------------- reel
 func _start_reel() -> void:
 	if state != S.BITE: return
 	_set_state(S.REELING)
+	_misses = 0
 	ui.hide_bite()
 	ui.flash("Hooked!", Color("4f8f88"))
-	sfx.play("splash", 1.2, -4.0)
+	sfx.play("splash", 1.2, -8.0)
 	var rod := FishRoll.rod()
 	var cm := float(_fish.get("cm", 20.0))
 	var rar := int(_fish.get("rarity", 1))
-	_strength = (0.55 + 0.75 * clampf(cm / 120.0, 0.0, 1.2) + 0.15 * (rar - 1)) * float(rod.surge)
-	# Data.REEL_SECONDS [4, 9]: total fight length scales with size; ~70% of it is spent actually reeling
-	var rs := FishRoll.pair("REEL_SECONDS", Vector2(4.0, 9.0))
+	_strength = (0.45 + 0.55 * clampf(cm / 120.0, 0.0, 1.2) + 0.1 * (rar - 1)) * float(rod.surge)
+	# most fights 3-6 s (owner); bigger fish take longer. Part of each fight is spent easing off.
 	var frac := clampf(0.5 * float(_fish.get("size_t", 0.5)) + 0.5 * clampf(cm / 120.0, 0.0, 1.0), 0.0, 1.0)
-	_hold_time = lerpf(rs.x, rs.y, frac) * 0.7
+	_hold_time = lerpf(REEL_HOLD.x, REEL_HOLD.y, frac) + 0.25 * (rar - 1)
 	if _fish.get("junk", false):
-		_strength = 0.3; _hold_time = rs.x * 0.7
-	if not _test.is_empty(): _hold_time *= 3.0 if _test.get("result", "") == "snap" else 0.5
+		_strength = 0.25; _hold_time = REEL_HOLD.x
+	if not _test.is_empty(): _hold_time *= 4.0 if _test.get("result", "") == "snap" else 0.6
 	_prog = 0.06
-	_tension = 0.12
+	_tension = 0.1
+	_over_t = 0.0
 	_surge_left = 0.0; _warn_left = 0.0
-	_surge_in = randf_range(0.6, 1.1)
+	_surge_in = randf_range(0.9, 1.5)
 	_fish_pos = _target
 	_fish_lat = 0.0
 	_ripple_t = 0.0
 	ui.show_reel(_fish)
-	_nudge(0.05)
 
 func _tick_reel(dt: float) -> void:
 	var junk: bool = _fish.get("junk", false)
@@ -413,81 +461,82 @@ func _tick_reel(dt: float) -> void:
 	if not _test.is_empty():
 		if _test.get("result", "") == "snap": _auto_hold = true
 		elif _warn_left > 0.0 or _surge_left > 0.0 or _tension > 0.7: _auto_hold = false
-		elif _tension < 0.5: _auto_hold = true
+		elif _tension < 0.4: _auto_hold = true
 	var held := InputBridge.action_held or _auto_hold
-	# surges: warn -> surge -> calm
+	# surges: telegraph (shadow tugs, line wiggles, "!") -> gentle surge -> calm
 	if _surge_left > 0.0:
 		_surge_left -= dt
-		if _surge_left <= 0.0: _surge_in = randf_range(0.9, 2.1) / (0.75 + 0.25 * _strength)
+		if _surge_left <= 0.0: _surge_in = randf_range(1.4, 2.6) / (0.8 + 0.2 * _strength)
 	elif _warn_left > 0.0:
 		_warn_left -= dt
 		if _warn_left <= 0.0:
-			_surge_left = randf_range(0.5, 0.85) * (0.8 + 0.2 * _strength)
+			_surge_left = randf_range(0.5, 0.8)
 			_fish_dir = -_fish_dir
-			sfx.play("splash", randf_range(0.9, 1.1), -3.0)
-			Fx.splash(_rig, _fish_pos, 7, 0.6 + 0.3 * _strength)
-			_nudge(0.04 + 0.03 * _strength)
-			Input.vibrate_handheld(35)
+			sfx.play("splash", randf_range(0.95, 1.1), -9.0)
+			Fx.splash(_rig, _fish_pos, 4, 0.4 + 0.2 * _strength)
+			Input.vibrate_handheld(20)
 	elif not junk:
 		_surge_in -= dt
-		if _surge_in <= 0.0 and _prog < 0.96:
-			_warn_left = 0.38
-			sfx.play("warn", 1.0, -6.0)
+		if _surge_in <= 0.0 and _prog < 0.95:
+			_warn_left = SURGE_WARN
+			sfx.play("warn", 1.0, -10.0)
 	var surging := _surge_left > 0.0
 	if held:
-		_prog += dt / _hold_time * (0.4 if surging else 1.0)
-		_tension += dt * 0.24 * (0.6 + 0.6 * _strength)
-		if surging: _tension += dt * 1.15 * _strength
+		_prog += dt / _hold_time * (0.5 if surging else 1.0)
+		_tension += dt * 0.16 * (0.6 + 0.5 * _strength)
+		if surging: _tension += dt * 0.55 * _strength
 		_tick -= dt
 		if _tick <= 0.0:
-			_tick = 0.075
-			sfx.play("tick", 0.85 + _tension * 0.6, -9.0)
+			_tick = 0.09
+			sfx.play("tick", 0.85 + _tension * 0.5, -12.0)
 	else:
-		_tension -= dt * 0.6
-		_prog -= dt * (0.02 + (0.07 * _strength if surging else 0.0))
-		if surging: _tension += dt * 0.1 * _strength
-	_tension = clampf(_tension, 0.0, 1.05)
+		_tension -= dt * 1.3          # letting go calms things fast
+		_prog -= dt * (0.01 + (0.04 * _strength if surging else 0.0))
+	_tension = clampf(_tension, 0.0, 1.0)
 	_prog = clampf(_prog, 0.0, 1.0)
+	# the line only snaps after a long, sustained 100%
+	if _tension >= 0.999 and held: _over_t += dt
+	else: _over_t = maxf(0.0, _over_t - dt * 2.0)
 	ui.set_reel(_prog, _tension, _warn_left > 0.0, surging, held)
-	# fish in the water: comes closer with progress, zigzags, darts on surges
+	# fish in the water: comes closer with progress, zigzags, tugs before a surge
 	var shore := _origin + _fwd * 1.3
 	shore.y = _water_y
 	var base := _target.lerp(shore, _prog * 0.85)
-	var want_lat := sin(_t * 1.7) * 0.5 + (_fish_dir * 1.0 if surging else 0.0)
-	_fish_lat = lerpf(_fish_lat, want_lat, 1.0 - exp(-(5.0 if surging else 2.5) * dt))
+	var want_lat := sin(_t * 1.3) * 0.45 + (_fish_dir * 0.7 if surging else 0.0)
+	_fish_lat = lerpf(_fish_lat, want_lat, 1.0 - exp(-(3.5 if surging else 2.0) * dt))
 	_shadow_prev = _shadow_pos
 	_fish_pos = base + _right * _fish_lat
+	if _warn_left > 0.0: _fish_pos += _right * sin(_t * 38.0) * 0.07 - _fwd * 0.05   # the tug
 	_fish_pos.y = _water_y
 	_shadow_pos = _fish_pos + Vector3(0, 0.03, 0)
 	_ripple_t -= dt
 	if _ripple_t <= 0.0:
-		_ripple_t = 0.18 if surging else 0.4
-		Fx.ripple(_rig, _fish_pos, 0.1, 0.55 if not surging else 0.9, 0.6, 0.7)
+		_ripple_t = 0.25 if surging else 0.45
+		Fx.ripple(_rig, _fish_pos, 0.1, 0.5 if not surging else 0.75, 0.6, 0.6)
 	if not _shot_reel_done and _prog > 0.45:
 		_shot_reel_done = true
-		if _test.has("debug"): print("[fishing test] shadow ", _shadow.global_transform.origin if _shadow else null, " vis ", _shadow.is_visible_in_tree() if _shadow else false, " water_y ", _water_y, " island ", _island())
 		if not _test.is_empty(): _test_shot("reel")
-	if _tension >= 1.0: _snap(); return
+	if _over_t >= SNAP_AFTER: _snap(); return
 	if _prog >= 1.0: _land()
 
 func _snap() -> void:
-	sfx.play("snap")
-	_nudge(0.12)
-	Input.vibrate_handheld(90)
-	Fx.splash(_rig, _fish_pos, 6, 0.6)
+	sfx.play("snap", 1.0, -6.0)
+	_nudge(0.025)
+	Input.vibrate_handheld(40)
+	Fx.ripple(_rig, _fish_pos, 0.1, 0.8, 0.7, 0.7)
 	ui.hide_reel()
 	ui.set_catcher(false)
-	_end("Snap. The fish keeps the hook.", "")
+	_end("The line snapped.", "")
 
 # ---------------------------------------------------------------- landing + rewards
 func _land() -> void:
 	_set_state(S.LANDING)
 	ui.hide_reel()
 	ui.set_catcher(false)
-	sfx.play("splash", 0.9); sfx.play("catch", 1.0, -2.0)
-	Fx.splash(_rig, _fish_pos, 14, 1.3)
-	_nudge(0.08)
-	Input.vibrate_handheld(50)
+	sfx.play("splash", 0.9, -6.0); sfx.play("catch", 1.0, -4.0)
+	Fx.splash(_rig, _fish_pos, 9, 0.9)
+	_nudge(0.025)
+	Input.vibrate_handheld(30)
 	_info = _award()
 	var gold: bool = _fish.get("gold", false)
 	var body: Color = Color("f2c14e") if gold else _fish.get("body", Color("a9c4d6"))
@@ -554,10 +603,12 @@ func _award() -> Dictionary:
 			_pending_toasts.append(["spark", int(spark.get("record", 0)), name + " record"])
 		if gold and int(spark.get("gold", 0)) > 0:
 			_pending_toasts.append(["spark", int(spark.get("gold", 0)), "gold " + name])
+	var spark_total := 0
+	for e in _pending_toasts: spark_total += int(e[1])
 	_pending_toasts.append(["say", _dry_line(first, record, gold, junk, int(_fish.get("rarity", 1)), float(_fish.get("size_t", 0.0)))])
 	return {"id": id, "name": ("Gold " + name) if gold else name, "cm": cm, "rarity": int(_fish.get("rarity", 1)), "gold": gold,
 		"price": int(_fish.get("price", 10)), "body": _fish.get("body", Color("a9c4d6")), "fin": _fish.get("fin", Color("6f8fa8")),
-		"record": record, "first": first, "prev_best": best, "junk": junk, "trophy": trophy}
+		"record": record, "first": first, "prev_best": best, "junk": junk, "trophy": trophy, "sparks": spark_total}
 
 func _dry_line(first: bool, record: bool, gold: bool, junk: bool, rarity: int, size_t: float) -> String:
 	var pool: Array
@@ -572,7 +623,7 @@ func _dry_line(first: bool, record: bool, gold: bool, junk: bool, rarity: int, s
 func _on_card_closed() -> void:
 	if state != S.CARD: return
 	for e in _pending_toasts:
-		if e[0] == "spark": GameState.add_sparks(int(e[1]), str(e[2]))
+		if e[0] == "spark": GameState.add_sparks(int(e[1]))      # the card already showed "+n spark"
 		elif e[0] == "say": GameState.say(str(e[1]))
 	if not _pending_toasts.is_empty(): _save()
 	_pending_toasts.clear()
@@ -586,7 +637,7 @@ func _save() -> void:
 ## Show a word, reel the line in, then _finish() (which frees the player).
 func _end(msg: String, snd: String) -> void:
 	if state == S.ENDING or state == S.IDLE: return
-	if msg != "": ui.flash(msg, Color("c4504a") if msg != "Reeled in." else Color("6b4a3a"))
+	if msg != "": ui.flash(msg, SOFT_RED if msg != "Reeled in." else Color("6b4a3a"))
 	if snd != "": sfx.play(snd)
 	ui.hide_bite(); ui.hide_reel(); ui.set_catcher(false)
 	_set_state(S.ENDING)
@@ -666,7 +717,7 @@ func _update_rig(dt: float) -> void:
 		match state:
 			S.WAITING:
 				var dip := 0.0
-				if _nibble_t >= 0.2 and _nibble_t < 0.36: dip = 0.07 * sin(PI * (_nibble_t - 0.2) / 0.16)
+				if _nibble_t >= 0.2 and _nibble_t < 0.36: dip = 0.035 * sin(PI * (_nibble_t - 0.2) / 0.16)
 				_bobber.global_position = _target + Vector3.UP * (sin(_t * 2.4) * 0.02 - dip)
 				_bobber.rotation.z = sin(_t * 1.7) * 0.08
 			S.BITE:
@@ -697,12 +748,13 @@ func _update_rig(dt: float) -> void:
 			var heading := _shadow_pos - _shadow_prev
 			if heading.length() < 0.0005: heading = _fwd
 			var alpha := 0.7
-			if state == S.WAITING: alpha = clampf(_t / 0.8, 0.0, 1.0) * 0.6
+			if state == S.WAITING: alpha = _shadow_fade * 0.6
 			elif state == S.BITE: alpha = 0.8
 			Fx.set_shadow(_shadow, Vector3(_shadow_pos.x, _water_y + 0.03, _shadow_pos.z), heading, length, alpha)
 
 # ---------------------------------------------------------------- juice
 func _nudge(amount: float) -> void:
+	amount = minf(amount, 0.03)      # owner: never more than a tiny nudge
 	var cam := get_viewport().get_camera_3d()
 	if cam == null: return
 	if _cam_tw and _cam_tw.is_valid():

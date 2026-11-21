@@ -18,19 +18,16 @@ static func build(parent: Node3D, sitting := false) -> Node3D:
 	var blush := Toys.mat(Color("f4a3a8"), 0.9, 0.0)
 	var scarf := Toys.mat(Color("6fc2b6"))
 
-	# body: one smooth pear, cream belly + chest ruff blended into it, soft sesame saddle on the back
+	# body: one smooth pear
 	Toys.add(Toys.sphere(0.5), fur, Vector3(0, 0.55, 0), g, Vector3(1, 1.05, 0.9))
-	Toys.add(Toys.sphere(0.34), cream_in, Vector3(0, 0.58, 0.22), g, Vector3(1.0, 1.0, 0.62))
-	Toys.add(Toys.sphere(0.3), cream, Vector3(0, 0.74, 0.27), g, Vector3(1.1, 0.75, 0.62))
-	Toys.add(Toys.sphere(0.4), Toys.mat(SESAME, 0.9, 0.0), Vector3(0, 0.78, -0.13), g, Vector3(1.0, 0.72, 0.8))
+	# urajiro: a body-shaped cap nudged forward, so only a thin smooth oval shows (no ridge, no outline)
+	Toys.add(Toys.sphere(0.5), cream_in, Vector3(0, 0.56, 0.06), g, Vector3(0.8, 0.86, 0.85))
 
 	# head
 	var h := Toys.group(Vector3(0, 1.25, 0.05), g)
 	h.set_meta("part", "head")
 	Toys.add(Toys.sphere(0.46), fur, Vector3.ZERO, h, Vector3(1.12, 0.92, 0.95))
 	for s in [-1, 1]:
-		# fluffy jowls: one wide soft form per side that pushes the silhouette out
-		Toys.add(Toys.sphere(0.22), fur, Vector3(0.36 * s, -0.12, 0.08), h, Vector3(0.85, 0.82, 0.95))
 		# urajiro cheek mask, merged with the muzzle into one cream shape
 		Toys.add(Toys.sphere(0.22), cream_in, Vector3(0.22 * s, -0.15, 0.26), h, Vector3(1.15, 0.82, 0.8))
 	Toys.add(Toys.sphere(0.2), cream, Vector3(0, -0.13, 0.37), h, Vector3(1.2, 0.8, 0.85))
@@ -61,19 +58,17 @@ static func build(parent: Node3D, sitting := false) -> Node3D:
 	for s in [-1, 1]:
 		var arm := Toys.add(Toys.capsule(0.11, 0.5), fur, Vector3(0.38 * s, 0.72, 0.3), g, Vector3.ONE, Vector3(-1.1, 0, 0.3 * s))
 		arm.set_meta("part", "arm")
-		Toys.add(Toys.sphere(0.1), cream, Vector3(0, -0.19, 0), arm, Vector3(1, 0.7, 1))
+		Toys.add(Toys.sphere(0.107), cream_in, Vector3(0, -0.152, 0), arm)   # paw tip cap, flush with the arm
 		if sitting:
 			var ft := Toys.add(Toys.capsule(0.13, 0.4), fur, Vector3(0.22 * s, 0.13, 0.32), g, Vector3.ONE, Vector3(PI / 2, 0, 0.15 * s))
-			Toys.add(Toys.sphere(0.105), cream, Vector3(0, -0.16, 0), ft, Vector3(1, 0.7, 1))
+			Toys.add(Toys.sphere(0.127), cream_in, Vector3(0, -0.08, 0), ft)
 		else:
 			var leg := Toys.add(Toys.capsule(0.13, 0.36), fur, Vector3(0.2 * s, 0.12, 0.05), g)
 			leg.set_meta("part", "leg")
-			Toys.add(Toys.sphere(0.115), cream, Vector3(0, -0.11, 0.04), leg, Vector3(1, 0.55, 1.15))
+			Toys.add(Toys.sphere(0.127), cream_in, Vector3(0, -0.06, 0.01), leg)
 
 	# big curled tail over the back: one fat torus curl, cream underside and tip
 	var tail := Toys.group(Vector3(0, 0.62, -0.42), g)
 	tail.set_meta("part", "tail")
-	Toys.add(Toys.torus(0.05, 0.34), fur, Vector3(0.0, 0.2, -0.06), tail, Vector3(0.85, 1, 1), Vector3(0, 0, PI / 2))
-	Toys.add(Toys.sphere(0.13), cream_in, Vector3(0.0, 0.08, -0.15), tail, Vector3(0.9, 0.8, 0.9))
-	Toys.add(Toys.sphere(0.14), cream, Vector3(0.05, 0.3, 0.12), tail, Vector3(1, 0.9, 1))
+	Toys.add(Toys.torus(0.015, 0.34), fur, Vector3(0.0, 0.2, -0.06), tail, Vector3(0.85, 1, 1), Vector3(0, 0, PI / 2))
 	return g

@@ -10,11 +10,13 @@ extends Node
 const Dat := preload("res://scripts/systems/town/dat.gd")
 const Stage := preload("res://scripts/systems/town/stage.gd")
 const LanternSpot := preload("res://scripts/systems/town/lantern_spot.gd")
+const Kit := preload("res://scripts/systems/town/kit.gd")
 
 var main: Node
 var _root: Node3D
 var _spots := {}                 # lantern id -> LanternSpot
 var _locked_player: Node
+var _card_layer: CanvasLayer
 var _checks_failed := 0
 
 func setup(m: Node) -> void:
@@ -33,6 +35,7 @@ func _boot() -> void:
 
 func _exit_tree() -> void:
 	_unlock_player()
+	if _card_layer != null and is_instance_valid(_card_layer): _card_layer.queue_free()
 
 func _build_all() -> void:
 	for id in Dat.d("LANTERNS").keys():
@@ -68,6 +71,8 @@ func _make(id: String) -> void:
 	spot.cost = maxi(0, int(info.get("cost", 10)))
 	spot.lname = str(info.get("name", id.capitalize() + " Lantern"))
 	spot.unlocks = str(info.get("unlocks", ""))
+	spot.after = str(info.get("after", ""))
+	spot.after_name = str(Dat.entry("LANTERNS", spot.after).get("name", spot.after.capitalize())).trim_suffix(" Lantern").to_lower() + " lantern" if spot.after != "" else ""
 	spot.system = self
 	spot.main = main
 	spot.position = pos
@@ -84,6 +89,7 @@ func light(spot: Node) -> void:
 	var id: String = spot.lantern_id
 	if GameState.lanterns.has(id) or spot.lit: return
 	if GameState.sparks < spot.cost: return
+	if spot.after != "" and not GameState.lanterns.has(spot.after): return
 	GameState.add_sparks(-spot.cost, "")
 	GameState.lanterns[id] = true
 	spot.set_lit(true, true)
@@ -91,12 +97,52 @@ func light(spot: Node) -> void:
 	var isl := Stage.island(main)
 	if isl != null and isl.has_method("refresh_unlocks"):
 		isl.refresh_unlocks()
-	GameState.say("%s is lit." % spot.lname)
-	if spot.unlocks != "":
-		var txt: String = spot.unlocks
-		get_tree().create_timer(1.6).timeout.connect(func() -> void: GameState.say(txt))
+	var title: String = "%s is lit" % spot.lname
+	var txt: String = spot.unlocks
+	get_tree().create_timer(1.5).timeout.connect(func() -> void: _show_card(title, txt))
 	GameState.catalog_changed.emit()
 	GameState.save_soon()
+
+## "X is lit" card with what it unlocks. Waits for a tap (no toast: the text is too long to read in passing).
+func _show_card(title: String, text: String) -> void:
+	if not is_inside_tree(): return
+	if _card_layer != null and is_instance_valid(_card_layer): _card_layer.queue_free()
+	var layer := CanvasLayer.new()
+	layer.layer = 30
+	layer.name = "LanternCard"
+	add_child(layer)
+	_card_layer = layer
+	var holder := Control.new()
+	holder.set_anchors_preset(Control.PRESET_FULL_RECT)
+	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(holder)
+	var center := CenterContainer.new()
+	center.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	center.offset_top = 120.0
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	holder.add_child(center)
+	var card := PanelContainer.new()
+	card.custom_minimum_size = Vector2(456, 0)
+	card.add_theme_stylebox_override("panel", Kit.box(Color("fff4d8"), 22, 3, 18))
+	center.add_child(card)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 8)
+	card.add_child(col)
+	col.add_child(Kit.label(title, 26, Kit.INK, false, true))
+	if text != "":
+		var body := Kit.label(text, 22, Kit.INK, true)
+		body.custom_minimum_size.x = 400
+		col.add_child(body)
+	var ok := Kit.button("Lovely", Kit.GREEN, 24, 88, 0.0)
+	ok.pressed.connect(func() -> void:
+		if is_instance_valid(layer): layer.queue_free())
+	col.add_child(ok)
+	card.pivot_offset = Vector2(228, 90)
+	card.scale = Vector2(0.88, 0.88)
+	card.modulate.a = 0.0
+	var tw := card.create_tween().set_parallel(true)
+	tw.tween_property(card, "scale", Vector2.ONE, 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(card, "modulate:a", 1.0, 0.15)
 
 ## Mocha pauses to watch the light come on (always released by the timer or when this node leaves the tree).
 func _hold_player(spot: Node3D) -> void:

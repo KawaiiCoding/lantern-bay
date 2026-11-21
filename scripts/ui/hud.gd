@@ -318,8 +318,8 @@ func _build_buttons() -> void:
 
 	_btn_ride = RoundButton.new()
 	_btn_ride.name = "RideButton"
-	_btn_ride.setup(RIDE_D, "mint")
-	_btn_ride.set_icon("moped", Style.CREAM, RIDE_D * 0.56)
+	_btn_ride.setup(RIDE_D, "secondary")
+	_btn_ride.set_icon("moped", Color(0, 0, 0, 0), RIDE_D * 0.56)
 	_root.add_child(_btn_ride)
 	_anchor_br(_btn_ride, RIDE_D, 24.0 + (ACTION_D - RIDE_D) * 0.5, 44.0 + ACTION_D + 14.0)
 
@@ -700,7 +700,7 @@ func _test_icon_sheet() -> void:
 	bx.add_theme_constant_override("separation", 14)
 	cl.add_child(bx)
 	bx.add_child(Style.button("Primary", "primary", 24, 88))
-	bx.add_child(Style.button("Mint", "mint", 24, 88))
+	bx.add_child(Style.button("Sage", "success", 24, 88))
 	var dis := Style.button("Disabled", "gold", 24, 88)
 	dis.disabled = true
 	bx.add_child(dis)
@@ -710,7 +710,7 @@ func _test_icon_sheet() -> void:
 	cl.add_child(bx2)
 	bx2.add_child(Style.button("Cream", "cream", 24, 88))
 	bx2.add_child(Style.icon_button("close", "cream"))
-	bx2.add_child(Style.icon_button("gear", "mint"))
+	bx2.add_child(Style.icon_button("gear", "secondary"))
 	bx2.add_child(Style.chip("Friend", Style.GOLD))
 	bx2.add_child(Style.hearts(3, 5, 28.0))
 
@@ -899,8 +899,11 @@ func _run_loop_test() -> void:
 	await get_tree().create_timer(3.4).timeout
 	_check(_toast_label.text.begins_with("Third") and _toast_panel.size.x <= 540.0, "toast: long text wraps inside the screen (w=%d)" % int(_toast_panel.size.x))
 	await _click(_toast_panel.get_global_rect().get_center())
-	await get_tree().create_timer(0.7).timeout
-	_check(not _toast_center.visible and not _toast_active, "toast: tap dismisses early, queue drained")
+	guard = 0
+	while (_toast_active or _toast_center.visible) and guard < 120:
+		await get_tree().process_frame
+		guard += 1
+	_check(not _toast_center.visible and not _toast_active and guard < 90, "toast: tap dismisses early (%d frames), queue drained" % guard)
 	GameState.toast.connect(_on_toast)
 
 	# money count-up and place name

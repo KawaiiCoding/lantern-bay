@@ -130,8 +130,8 @@ func flash(text: String, col := INK) -> void:
 	flash_label.modulate.a = 1.0
 	var tw := flash_label.create_tween()
 	tw.tween_property(flash_label, "scale", Vector2.ONE, 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	tw.tween_interval(0.75)
-	tw.tween_property(flash_label, "modulate:a", 0.0, 0.35)
+	tw.tween_interval(1.6)          # status words stay ~2 s (owner readability rule)
+	tw.tween_property(flash_label, "modulate:a", 0.0, 0.4)
 
 # ---------------------------------------------------------------- catch card
 ## info: {name, cm, rarity, gold, price, body, fin, record, first, prev_best, junk}
@@ -224,6 +224,11 @@ func show_card(info: Dictionary) -> void:
 	stars.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	vb.add_child(stars)
 
+	var sp_n := int(info.get("sparks", 0))
+	if sp_n > 0:
+		var spl := _label("+%d spark%s" % [sp_n, "" if sp_n == 1 else "s"], 20, Color("c9962a"))
+		spl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		vb.add_child(spl)
 	var price := int(info.get("price", 0))
 	var hb := HBoxContainer.new(); hb.alignment = BoxContainer.ALIGNMENT_CENTER
 	hb.add_theme_constant_override("separation", 8); hb.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -445,7 +450,7 @@ class ReelGauge extends Control:
 		var k := shown_tension
 		var shake := Vector2.ZERO
 		if k > 0.75 or surging:
-			var amp := 2.0 + 9.0 * clampf((k - 0.75) / 0.25, 0.0, 1.0) + (3.0 if surging else 0.0)
+			var amp := 1.0 + 3.0 * clampf((k - 0.75) / 0.25, 0.0, 1.0) + (1.0 if surging else 0.0)
 			shake = Vector2(randf_range(-1, 1), randf_range(-1, 1)) * amp
 		var sc := appear
 		draw_set_transform(c + shake, 0.0, Vector2(sc, sc))

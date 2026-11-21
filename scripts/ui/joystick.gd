@@ -143,6 +143,6 @@ func _draw() -> void:
 	# knob
 	var kp := _knob if _finger != -2 else _origin
 	draw_circle(kp + Vector2(0, 4), KNOB * k, Color(Style.SHADOW, 0.35 * a), true, -1.0, true)
-	draw_circle(kp, KNOB * k, Color(Style.MINT, 0.95 * a), true, -1.0, true)
+	draw_circle(kp, KNOB * k, Color(Style.PRIMARY, 0.95 * a), true, -1.0, true)
 	draw_arc(kp, KNOB * k, 0.0, TAU, 40, Color(Style.INK, 0.9 * a), 3.0, true)
 	draw_arc(kp, KNOB * k - 9.0, deg_to_rad(200.0), deg_to_rad(285.0), 12, Color(1, 1, 1, 0.5 * a), 4.0, true)

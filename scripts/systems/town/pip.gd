@@ -23,16 +23,14 @@ func _build() -> void:
 	var fur := Toys.mat(Color("f6eee2"))
 	var light := Toys.mat(Color("fffaf2"))
 	var inner := Toys.mat(Color("f2b8c0"), 0.9, 0.0)
-	var apron := Toys.mat(Color("7fbfc9"))
-	var apron_hi := Toys.mat(Color("fff6ea"))
+	var apron := Toys.mat(Color("7fbfc9"), 0.85, 0.0)
 	var dark := Toys.mat(Color("3b2a24"), 0.2, 0.0)
 	var blush := Toys.mat(Color("f2a0a6"), 0.9, 0.0)
 	var frame := Toys.mat(Color("6b4a3a"), 0.4, 0.0)
 
 	_body = Toys.group(Vector3.ZERO, self)
 	Toys.add(Toys.sphere(0.46), fur, Vector3(0, 0.5, 0), _body, Vector3(1.0, 1.0, 0.9))
-	Toys.add(Toys.sphere(0.4), apron, Vector3(0, 0.5, 0.31), _body, Vector3(0.95, 1.15, 0.36))
-	Toys.add(Toys.sphere(0.14), apron_hi, Vector3(0, 0.3, 0.46), _body, Vector3(1.4, 0.8, 0.3))
+	Toys.add(Toys.sphere(0.4), apron, Vector3(0, 0.5, 0.25), _body, Vector3(0.95, 1.15, 0.36))
 	Toys.add(Toys.torus(0.22, 0.28), apron, Vector3(0, 0.9, 0.02), _body)
 	for s in [-1, 1]:
 		Toys.add(Toys.capsule(0.1, 0.44), fur, Vector3(0.4 * s, 0.6, 0.2), _body, Vector3.ONE, Vector3(-1.0, 0, 0.3 * s))

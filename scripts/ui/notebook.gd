@@ -159,7 +159,7 @@ func _card(bg := Style.CREAM_DEEP, border := 2, margin := 12, radius := 20) -> P
 	return p
 
 func _summary(left: String, right := "") -> Control:
-	var c := _card(Color("e2f3ef"), 2, 14, 18)
+	var c := _card(Color("e3efe6"), 2, 14, 18)
 	var h := HBoxContainer.new()
 	c.add_child(h)
 	var l := Style.label(left, 22, Style.INK, true)
@@ -439,7 +439,7 @@ func _person_card(id: String, def: Dictionary) -> Control:
 	prog.add_theme_constant_override("separation", 10)
 	vb.add_child(prog)
 	if int(bounds[1]) >= 0:
-		prog.add_child(Style.bar(float(pts - int(bounds[0])), float(int(bounds[1]) - int(bounds[0])), Style.MINT, 16.0))
+		prog.add_child(Style.bar(float(pts - int(bounds[0])), float(int(bounds[1]) - int(bounds[0])), Style.SUCCESS, 16.0))
 		var pl := Style.label("%d / %d" % [pts, int(bounds[1])], 17, Style.INK_SOFT, true)
 		pl.custom_minimum_size.x = 92
 		pl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
@@ -644,7 +644,7 @@ func _page_requests() -> void:
 
 func _request_row(r: Dictionary) -> Control:
 	var done := bool(r.get("done", false))
-	var card := _card(Color("e2f3ef") if done else Style.CREAM_DEEP, 2, 14, 20)
+	var card := _card(Color("e3efe6") if done else Style.CREAM_DEEP, 2, 14, 20)
 	var h := HBoxContainer.new()
 	h.add_theme_constant_override("separation", 12)
 	card.add_child(h)
@@ -673,7 +673,7 @@ func _request_row(r: Dictionary) -> Control:
 	if sp > 0:
 		line.add_child(Style.icon("spark", 24.0))
 		line.add_child(Style.label("%d" % sp, 20, Style.INK, true))
-	if done: line.add_child(Style.label("Done", 19, Style.MINT_DARK, true))
+	if done: line.add_child(Style.label("Done", 19, Style.SUCCESS_DARK, true))
 	elif who != "": line.add_child(Style.label("for " + who, 18, Style.INK_SOFT))
 	return card
 
@@ -733,7 +733,7 @@ func _page_settings() -> void:
 		vb.add_child(_wrap_label("Music is not available in this build.", 19, Style.INK_SOFT, _cw() - 40.0))
 	else:
 		var on: bool = music.enabled()
-		var tg := Style.button("Music: On" if on else "Music: Off", "mint" if on else "ghost", 26)
+		var tg := Style.button("Music: On" if on else "Music: Off", "primary" if on else "ghost", 26)
 		tg.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		tg.pressed.connect(func() -> void:
 			music.set_enabled(not music.enabled())
@@ -801,6 +801,6 @@ class TabButton extends Button:
 		add_theme_stylebox_override("focus", StyleBoxEmpty.new())
 		_lbl.add_theme_color_override("font_color", Style.CREAM if s else Style.INK)
 		_lbl.add_theme_constant_override("outline_size", 4 if s else 0)
-		_lbl.add_theme_color_override("font_outline_color", Style.ROSE_DARK)
+		_lbl.add_theme_color_override("font_outline_color", Style.PRIMARY_DARK)
 		_icon.tint = Style.CREAM if s else Color(0, 0, 0, 0)
 		_icon.queue_redraw()

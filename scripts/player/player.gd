@@ -283,7 +283,7 @@ func setup(m) -> void:
 	var isl = main.get("island") if main else null
 	if is_instance_valid(isl) and isl.has_method("ground_y"): p.y = isl.ground_y(p.x, p.z)
 	global_position = p + Vector3(0, 0.05, 0)
-	if _test and _demo == "portrait" and (main == null or main.get("island") == null):
+	if _test and _demo.begins_with("portrait") and (main == null or main.get("island") == null):
 		global_position = Vector3(16, 0.05, 16)   # clear of other systems' test NPCs
 	_yaw = 0.0   # face the camera (+Z) on spawn
 	_rig.rotation.y = _yaw
@@ -641,9 +641,11 @@ func _place_camera(dt: float, snap: bool) -> void:
 		_cam_dist = lerpf(_cam_dist, want_dist, 1.0 - exp(-2.0 * dt))
 		var goal := global_position + Vector3(0, CAM_FOCUS_UP, -CAM_FOCUS_FWD) + _cam_ahead
 		_cam_focus = _cam_focus.lerp(goal, 1.0 - exp(-CAM_LAG * dt))
-	if _test and _demo == "portrait":
-		var face_at := global_position + Vector3(0, 1.2, 0)
+	if _test and _demo.begins_with("portrait"):
+		var face_at := global_position + Vector3(0, 0.95, 0)
 		var fwd := _rig.global_basis.z
+		if _demo == "portrait_side": fwd = _rig.global_basis.x
+		elif _demo == "portrait_back": fwd = -_rig.global_basis.z
 		camera.global_position = face_at + fwd * 3.3 + Vector3(0, 0.8, 0)
 		camera.look_at(face_at + Vector3(0, -0.1, 0), Vector3.UP)
 		if cam_attr: cam_attr.dof_blur_far_distance = 5.0; cam_attr.dof_blur_near_distance = 1.0
@@ -709,7 +711,7 @@ func _demo_move() -> Vector2:
 			if t < 1.0: return Vector2(0.6, -0.8)
 			if t > 1.3 and not sitting: sit(true)
 			return Vector2.ZERO
-		"none":
+		"none", "portrait", "portrait_side", "portrait_back":
 			return Vector2.ZERO
 		"full":
 			if t < 0.6: return Vector2(0.55, -0.85).normalized()

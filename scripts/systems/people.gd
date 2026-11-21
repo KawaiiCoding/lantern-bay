@@ -781,7 +781,7 @@ func _run_test() -> void:
 		var tp := center + Vector3(5.5, 0, 5.5)
 		tp.y = ground_y(tp)
 		nodes[_arg("view")].walk_to(tp, true)
-		nodes[_arg("view")].set_facing(0.25)
+		nodes[_arg("view")].set_facing(float(_arg("angle")) if _arg("angle").is_valid_float() else 0.25)
 		if is_instance_valid(_test_cam):
 			_test_cam.global_position = tp + Vector3(0.9, 1.0, 5.6)
 			_test_cam.look_at(tp + Vector3(0, 0.95, 0))

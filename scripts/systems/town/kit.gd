@@ -94,6 +94,15 @@ static func button(text: String, fill := GREEN, size := 22, min_h := MIN_TOUCH, 
 	_fallback_squish(b)
 	return b
 
+## Enable / disable a button. Disabled buttons lose the sticker outline so the grey label stays crisp.
+static func set_enabled(b: Button, on: bool) -> void:
+	b.disabled = not on
+	if on:
+		if b.has_meta("_osz"): b.add_theme_constant_override("outline_size", int(b.get_meta("_osz")))
+	else:
+		if not b.has_meta("_osz"): b.set_meta("_osz", b.get_theme_constant("outline_size"))
+		b.add_theme_constant_override("outline_size", 0)
+
 static func _tighten(b: Button) -> void:
 	for state in ["normal", "hover", "pressed", "disabled"]:
 		var sb := b.get_theme_stylebox(state)

@@ -156,7 +156,7 @@ func _card(req: Dictionary) -> Control:
 
 	var btn := Kit.button("Done" if done else "Complete", Kit.GREEN, 22, 88, 132)
 	btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	btn.disabled = not can
+	Kit.set_enabled(btn, can)
 	btn.pressed.connect(_complete.bind(req))
 	h.add_child(btn)
 	return card

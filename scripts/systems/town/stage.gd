@@ -4,7 +4,7 @@ extends RefCounted
 
 const FALLBACK := {
 	"shop_counter": Vector3(-3.0, 0, -4.0), "shop": Vector3(-3.0, 0, -2.0), "board": Vector3(2.6, 0, -3.4),
-	"lantern_harbour": Vector3(7.0, 0, 3.0), "lantern_hill": Vector3(-7.0, 0, 3.0), "beach": Vector3(0, 0, 8.0),
+	"lantern_harbour": Vector3(7.0, 0, 3.0), "lantern_hill": Vector3(-7.0, 0, 3.0), "lighthouse": Vector3(10.0, 0, -3.0), "beach": Vector3(0, 0, 8.0),
 	"flats": Vector3(2.0, 0, 12.0), "plaza": Vector3(0, 0, 0), "home": Vector3(-6.0, 0, -5.0), "spawn": Vector3(0, 0, 2.0),
 }
 
@@ -42,7 +42,11 @@ static func spot(main: Node, name: String) -> Vector3:
 	if isl != null and isl.has_method("spot"):
 		var p: Variant = isl.spot(name)
 		if p is Vector3 and p != Vector3.ZERO: return p
-	return FALLBACK.get(name, Vector3.ZERO)
+	if FALLBACK.has(name): return FALLBACK[name]
+	if island(main) == null:       # unknown spot and no island: a stable place on a ring so nothing sits at the origin
+		var a := float(absi(name.hash()) % 628) / 100.0
+		return Vector3(cos(a) * 9.0, 0, sin(a) * 9.0)
+	return Vector3.ZERO
 
 static func ground_y(main: Node, x: float, z: float) -> float:
 	var isl := island(main)
@@ -88,7 +92,7 @@ static func ensure(main: Node, focus: Vector3, cam_off := Vector3(0, 6.5, 8.5)) 
 		main.add_child(sun)
 	var pl := player(main)
 	if pl != null:
-		if pl is Node3D: pl.global_position = focus + Vector3(0, 0.2, 2.6)
+		if pl is Node3D: pl.global_position = focus + Vector3(0, 0.2, -2.8)
 	else:
 		var cam := Camera3D.new()
 		cam.fov = 45

@@ -11,6 +11,8 @@ var lantern_id := ""
 var cost := 10
 var lname := "Lantern"
 var unlocks := ""
+var after := ""                  # lantern id that must be lit first
+var after_name := ""
 var system: Node                 # owner, has light(spot)
 var main: Node
 var interact_radius := 2.8
@@ -99,7 +101,10 @@ func _on_sparks(_s: int) -> void:
 func _refresh_label() -> void:
 	if _label == null or not is_instance_valid(_label): return
 	_label.visible = not lit
-	_label.text = "%d / %d sparks" % [GameState.sparks, cost] if GameState.sparks < cost else "Ready to light"
+	if after != "" and not GameState.lanterns.has(after):
+		_label.text = "Light the %s first" % after_name
+	else:
+		_label.text = "%d / %d sparks" % [GameState.sparks, cost] if GameState.sparks < cost else "Ready to light"
 
 ## Turn the light on. `animated` plays the little celebration; otherwise it is simply lit (after a reload).
 func set_lit(on: bool, animated := false) -> void:
@@ -167,6 +172,7 @@ func _celebrate() -> void:
 # ------------------------------------------------------------------ interactable contract
 func get_prompt(_player: Variant) -> String:
 	if lit or igniting: return ""
+	if after != "" and not GameState.lanterns.has(after): return ""
 	if GameState.sparks >= cost:
 		return "Light the lantern (%d sparks)" % cost
 	return ""

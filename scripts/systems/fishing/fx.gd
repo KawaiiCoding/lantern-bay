@@ -152,7 +152,7 @@ static func shadow(parent: Node3D) -> MeshInstance3D:
 	if _shadow_tex == null:
 		var g := Gradient.new()
 		g.set_color(0, Color(1, 1, 1, 1)); g.set_color(1, Color(1, 1, 1, 0))
-		g.add_point(0.5, Color(1, 1, 1, 0.92))
+		g.add_point(0.6, Color(1, 1, 1, 0.95))
 		_shadow_tex = GradientTexture2D.new()
 		_shadow_tex.gradient = g
 		_shadow_tex.fill = GradientTexture2D.FILL_RADIAL
@@ -168,6 +168,7 @@ static func shadow(parent: Node3D) -> MeshInstance3D:
 	m.albedo_texture = _shadow_tex
 	m.albedo_color = Color(SHADOW_TINT, 0.0)
 	m.render_priority = 8           # draw over (possibly transparent) water
+	m.disable_fog = true
 	m.set_meta("nobake", true)
 	mi.material_override = m
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF

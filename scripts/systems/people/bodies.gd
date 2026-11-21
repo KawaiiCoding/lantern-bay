@@ -29,8 +29,8 @@ static func build(parent: Node3D, p: Dictionary) -> Node3D:
 	rig.name = "Rig"
 	var feet: Array = []   # [mesh, half_height] for the ground calculation
 	var fur := Toys.mat(main)
-	var light := Toys.mat(extra if species != "sheep" else main.darkened(0.03))
-	if species == "fox" or species == "frog" or species == "walrus": light = Toys.mat(extra)
+	var light := Toys.mat(extra if species != "sheep" else main.darkened(0.03), 0.85, 0.0)
+	if species == "fox" or species == "frog" or species == "walrus": light = Toys.mat(extra, 0.85, 0.0)
 	var body_scale := Vector3(1, 1.05, 0.9)
 	if species == "walrus": body_scale = Vector3(1.22, 1.08, 1.05)
 	if species == "frog": body_scale = Vector3(1.05, 0.95, 0.92)
@@ -159,7 +159,7 @@ static func _bear_head(h: Node3D, main: Color, extra: Color) -> void:
 	Toys.add(Toys.sphere(0.46), fur, Vector3.ZERO, h, Vector3(1.08, 0.95, 0.95))
 	for sd in [-1, 1]:
 		Toys.add(Toys.sphere(0.15), fur, Vector3(0.32 * sd, 0.36, -0.02), h)
-		Toys.add(Toys.sphere(0.08), light, Vector3(0.32 * sd, 0.36, 0.08), h, Vector3(1, 1, 0.5))
+		Toys.add(Toys.sphere(0.08), Toys.mat(extra, 0.85, 0.0), Vector3(0.32 * sd, 0.36, 0.08), h, Vector3(1, 1, 0.5))
 	_eyes(h, 0.16, 0.06, 0.41)
 	_blush(h, 0.28, -0.07, 0.34)
 	Toys.add(Toys.sphere(0.17), light, Vector3(0, -0.1, 0.37), h, Vector3(1.2, 0.85, 0.7))
@@ -180,7 +180,7 @@ static func _fox_head(h: Node3D, main: Color, extra: Color) -> void:
 	Toys.add(Toys.sphere(0.44), fur, Vector3.ZERO, h, Vector3(1.12, 0.92, 0.95))
 	# cream cheeks
 	for sd in [-1, 1]:
-		Toys.add(Toys.sphere(0.2), light, Vector3(0.2 * sd, -0.13, 0.25), h, Vector3(1.1, 0.8, 0.8))
+		Toys.add(Toys.sphere(0.2), Toys.mat(extra, 0.85, 0.0), Vector3(0.2 * sd, -0.13, 0.25), h, Vector3(1.1, 0.8, 0.8))
 	# big pointed ears with dark tips
 	for sd in [-1, 1]:
 		var ear := Toys.group(Vector3(0.24 * sd, 0.38, -0.02), h, 0.0)
@@ -207,13 +207,13 @@ static func _sheep_head(h: Node3D, main: Color, extra: Color) -> void:
 	for sd in [-1, 1]:
 		Toys.add(Toys.capsule(0.08, 0.32), face, Vector3(0.38 * sd, 0.05, 0.02), h, Vector3(1, 1, 0.6), Vector3(0, 0, 1.25 * sd))
 	# light muzzle
-	Toys.add(Toys.sphere(0.15), Toys.mat(extra.lightened(0.35)), Vector3(0, -0.16, 0.34), h, Vector3(1.25, 0.8, 0.7))
+	Toys.add(Toys.sphere(0.15), Toys.mat(extra.lightened(0.35), 0.85, 0.0), Vector3(0, -0.16, 0.34), h, Vector3(1.25, 0.8, 0.7))
 	Toys.add(Toys.sphere(0.04), Toys.mat(DARK, 0.2, 0.0), Vector3(0, -0.1, 0.44), h, Vector3(1.4, 0.8, 1))
 	_eyes(h, 0.13, 0.04, 0.38, 0.048)
 	_blush(h, 0.23, -0.09, 0.33)
 
 static func _frog_head(h: Node3D, main: Color, extra: Color) -> void:
-	var skin := Toys.mat(main); var belly := Toys.mat(extra)
+	var skin := Toys.mat(main); var belly := Toys.mat(extra, 0.85, 0.0)
 	Toys.add(Toys.sphere(0.44), skin, Vector3(0, -0.04, 0), h, Vector3(1.28, 0.82, 1.0))
 	# eyes on top, white bulbs with dark pupils
 	var white := Toys.mat(Color("fffaf2"))
@@ -234,10 +234,10 @@ static func _raccoon_head(h: Node3D, main: Color, extra: Color) -> void:
 		var ear := Toys.group(Vector3(0.27 * sd, 0.34, -0.04), h)
 		ear.rotation.z = -0.35 * sd
 		Toys.add(_cone(0.15, 0.26, 12), fur, Vector3.ZERO, ear, Vector3(1, 1, 0.55))
-		Toys.add(_cone(0.08, 0.14, 10), light, Vector3(0, -0.02, 0.05), ear, Vector3(1, 1, 0.3))
+		Toys.add(_cone(0.08, 0.14, 10), Toys.mat(extra, 0.85, 0.0), Vector3(0, -0.02, 0.05), ear, Vector3(1, 1, 0.3))
 		# white brows and cheeks frame the mask
-		Toys.add(Toys.sphere(0.12), light, Vector3(0.17 * sd, 0.2, 0.33), h, Vector3(1.2, 0.5, 0.6))
-		Toys.add(Toys.sphere(0.15), light, Vector3(0.27 * sd, -0.13, 0.27), h, Vector3(1.0, 0.8, 0.8))
+		Toys.add(Toys.sphere(0.12), Toys.mat(extra, 0.85, 0.0), Vector3(0.17 * sd, 0.2, 0.33), h, Vector3(1.2, 0.5, 0.6))
+		Toys.add(Toys.sphere(0.15), Toys.mat(extra, 0.85, 0.0), Vector3(0.27 * sd, -0.13, 0.27), h, Vector3(1.0, 0.8, 0.8))
 		# the bandit mask: a soft dark patch around each eye
 		Toys.add(Toys.sphere(0.13), mask, Vector3(0.16 * sd, 0.04, 0.34), h, Vector3(1.35, 0.8, 0.55), Vector3(0, 0, 0.25 * sd))
 	Toys.add(Toys.sphere(0.15), light, Vector3(0, -0.14, 0.36), h, Vector3(1.1, 0.75, 0.9))
@@ -288,13 +288,11 @@ static func _outfit(kind: String, torso: Node3D, head: Node3D, accent: Color, sp
 	var front_z := 0.45 * bs.z
 	match kind:
 		"apron":
-			# shop apron: a shell over the lower body, a rounded bib, a light pocket and a waist tie
+			# shop apron: a smooth shell over the lower body with a cream waist tie
 			var ac := accent.lightened(0.18) if accent.get_luminance() < 0.3 else accent
 			var cloth := Toys.mat(ac)
 			var trim := Toys.mat(Color("fff6ea"))
 			Toys.add(Toys.sphere(0.5), cloth, Vector3(0, 0.47, 0.0), torso, Vector3(1.04, 0.8, 1.07) * bs)
-			Toys.add(Toys.sphere(0.2), cloth, Vector3(0, 0.74, 0.37 * bs.z / 0.9), torso, Vector3(1.1, 0.95, 0.42))
-			Toys.add(Toys.sphere(0.1), trim, Vector3(0.0, 0.36, 0.5 * bs.z), torso, Vector3(1.4, 0.9, 0.35))
 			Toys.add(Toys.torus(0.46, 0.53), trim, Vector3(0, 0.56, 0), torso, Vector3(bs.x, 0.7, bs.z))
 		"scarf":
 			Toys.add(Toys.torus(0.24, 0.42), m, Vector3(0, 0.98, 0.02), torso)
@@ -319,7 +317,6 @@ static func _outfit(kind: String, torso: Node3D, head: Node3D, accent: Color, sp
 			Toys.add(Toys.sphere(0.05), Toys.mat(Color("fff6ea")), Vector3(0, 0.23, 0), c)
 			# fisher vest
 			Toys.add(Toys.sphere(0.5), Toys.mat(Color("e9d9a8")), Vector3(0, 0.6, -0.02), torso, Vector3(1.04, 0.85, 0.92) * bs)
-			Toys.add(Toys.box(0.14, 0.12, 0.04), Toys.mat(Color("cbb880")), Vector3(-0.2, 0.62, 0.47), torso, Vector3.ONE, Vector3(-0.3, -0.3, 0))
 		"smock":
 			# painter's smock: a loose coat with dabs of paint, and a pencil tucked in the collar
 			Toys.add(Toys.sphere(0.5), m, Vector3(0, 0.55, 0.0), torso, Vector3(1.06, 0.93, 1.08) * bs)
@@ -336,9 +333,6 @@ static func _outfit(kind: String, torso: Node3D, head: Node3D, accent: Color, sp
 			Toys.add(Toys.sphere(0.3), m, Vector3(0, 0.06, 0), sh, Vector3(1, 0.62, 1))
 			Toys.add(Toys.cyl(0.305, 0.31, 0.07), Toys.mat(Color("8fbf7a")), Vector3(0, 0.05, 0), sh)
 			Toys.add(Toys.sphere(0.07), Toys.mat(Color("f2a0b8")), Vector3(0.26, 0.09, 0.12), sh)
-			# gardener's apron pocket with a trowel handle
-			Toys.add(Toys.box(0.3, 0.2, 0.06), Toys.mat(accent.darkened(0.25)), Vector3(0, 0.42, front_z + 0.02), torso, Vector3.ONE, Vector3(-0.25, 0, 0))
-			Toys.add(Toys.capsule(0.03, 0.18), Toys.mat(Color("9a7058")), Vector3(0.08, 0.55, front_z + 0.02), torso, Vector3.ONE, Vector3(0, 0, 0.2))
 		"beanie":
 			var bn := Toys.group(Vector3(0, 0.26, -0.02), head)
 			Toys.add(Toys.sphere(0.44), m, Vector3.ZERO, bn, Vector3(1.06, 0.62, 1.02))
@@ -346,7 +340,6 @@ static func _outfit(kind: String, torso: Node3D, head: Node3D, accent: Color, sp
 			Toys.add(Toys.sphere(0.1), Toys.mat(accent.lightened(0.2)), Vector3(0, 0.3, 0), bn)
 			# old fisher's vest with a pocket
 			Toys.add(Toys.sphere(0.5), Toys.mat(Color("6f7f68")), Vector3(0, 0.6, 0.0), torso, Vector3(1.05, 0.9, 1.06) * bs)
-			Toys.add(Toys.box(0.16, 0.13, 0.05), Toys.mat(Color("5c6a56")), Vector3(-0.24, 0.62, 0.42 * bs.z), torso, Vector3.ONE, Vector3(-0.3, -0.35, 0))
 		"keeper":
 			var kc := Toys.group(Vector3(0, 0.24, -0.02), head)
 			kc.rotation.x = -0.1

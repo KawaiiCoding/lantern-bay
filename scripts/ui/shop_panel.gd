@@ -330,17 +330,17 @@ func _buy_row(id: String, e: Dictionary) -> Control:
 	var btn: Button
 	if kind == "rod" and owned:
 		btn = Kit.button("Owned", Kit.GREEN, 22, 88, 124)
-		btn.disabled = true
+		Kit.set_enabled(btn, false)
 	elif kind == "rod" and lock != "":
 		btn = Kit.button("Locked", Kit.GREEN, 22, 88, 124)
-		btn.disabled = true
+		Kit.set_enabled(btn, false)
 	elif kind == "cosmetic" and owned:
 		var on := Eco.is_equipped(id)
 		btn = Kit.button("Take off" if on else "Wear", Kit.CREAM if on else Kit.PEACH, 22, 88, 124)
 		btn.pressed.connect(_wear.bind(id, not on))
 	else:
 		btn = Kit.button("Buy", Kit.GREEN, 24, 88, 124)
-		btn.disabled = not afford
+		Kit.set_enabled(btn, afford)
 		btn.pressed.connect(_buy.bind(id))
 	h.add_child(btn)
 	return card

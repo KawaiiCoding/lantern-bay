@@ -4,7 +4,7 @@ extends RefCounted
 ## No emojis anywhere: icons are vector shapes drawn in code (Style.icon).
 ##
 ##   Style.panel_box(bg)                -> StyleBoxFlat
-##   Style.button(text, kind)           -> Button   kinds: primary(rose) mint gold cream ghost
+##   Style.button(text, kind)           -> Button   kinds: primary(teal) secondary(ochre) success(sage) warn gold cream ghost
 ##   Style.icon_button(icon, kind)      -> Button   round, icon only, 88 px touch target
 ##   Style.label(text, size, color, bold) -> Label
 ##   Style.icon(name, size, tint)       -> Control  coin(=yen) yen clock sun moon cloud rain fog cat fish shell bag
@@ -19,12 +19,23 @@ const CREAM_DEEP := Color("f8eedc")      # inset cards
 const CREAM_SHADE := Color("eadcc4")     # tracks, disabled fills
 const INK := Color("6b4a3a")
 const INK_SOFT := Color("8a6e5d")        # secondary text (4.5:1 on cream)
-const ROSE := Color("e2607a")
-const ROSE_DARK := Color("b8435c")
-const MINT := Color("6fc2b6")
-const MINT_DARK := Color("3f9488")
-const GOLD := Color("f2c14e")
+# Neutral, warm palette (owner): deep teal primary, ochre secondary, mustard accent, sage success, terracotta warning.
+const PRIMARY := Color("2f7f79")
+const PRIMARY_DARK := Color("26665f")
+const SECONDARY := Color("e0a64a")
+const SECONDARY_DARK := Color("b8832c")
+const GOLD := Color("f2c14e")            # mustard accent
 const GOLD_DARK := Color("c9962a")
+const SUCCESS := Color("7fae93")
+const SUCCESS_DARK := Color("4f7f64")
+const WARN := Color("c7693f")
+const WARN_DARK := Color("9c4b28")
+const HEART := Color("d8573f")           # friendship hearts (warm red, not pink)
+# Legacy names kept so older code keeps compiling: rose -> primary teal, mint -> sage.
+const ROSE := PRIMARY
+const ROSE_DARK := PRIMARY_DARK
+const MINT := SUCCESS
+const MINT_DARK := SUCCESS_DARK
 const SKY := Color("9cc8ef")
 const NIGHT := Color("3d3a72")
 const DIM := Color(0.27, 0.17, 0.13, 0.58)
@@ -34,8 +45,11 @@ const MIN_TOUCH := 88.0                  # minimum touch target height (owner ru
 
 ## kind -> colours. bg fill, fg text/icon, edge = darker rim colour used for text outlines.
 const KINDS := {
-	"primary": {"bg": ROSE, "fg": CREAM, "edge": ROSE_DARK},
-	"mint": {"bg": MINT, "fg": CREAM, "edge": MINT_DARK},
+	"primary": {"bg": PRIMARY, "fg": CREAM, "edge": PRIMARY_DARK},
+	"secondary": {"bg": SECONDARY, "fg": INK, "edge": SECONDARY_DARK},
+	"success": {"bg": SUCCESS, "fg": INK, "edge": SUCCESS_DARK},
+	"mint": {"bg": SUCCESS, "fg": INK, "edge": SUCCESS_DARK},
+	"warn": {"bg": WARN, "fg": CREAM, "edge": WARN_DARK},
 	"gold": {"bg": GOLD, "fg": INK, "edge": GOLD_DARK},
 	"cream": {"bg": CREAM, "fg": INK, "edge": CREAM_SHADE},
 	"ghost": {"bg": CREAM_DEEP, "fg": INK, "edge": CREAM_SHADE},
@@ -210,7 +224,7 @@ static func theme() -> Theme:
 	grab.bg_color = Color(INK, 0.45); grab.set_corner_radius_all(6)
 	grab.content_margin_left = 6; grab.content_margin_right = 6
 	var grab_h := grab.duplicate() as StyleBoxFlat
-	grab_h.bg_color = Color(ROSE, 0.8)
+	grab_h.bg_color = Color(PRIMARY, 0.8)
 	_theme.set_stylebox("scroll", "VScrollBar", track)
 	_theme.set_stylebox("grabber", "VScrollBar", grab)
 	_theme.set_stylebox("grabber_highlight", "VScrollBar", grab_h)
@@ -312,7 +326,7 @@ class TouchSlider extends Control:
 			draw_style_box(fill, Rect2(Vector2(11, cy - th * 0.5 + 3), Vector2(kx - 11, th - 6)))
 		var r := 25.0 if _drag else 23.0
 		draw_circle(Vector2(kx, cy + 4), r, Style.SHADOW, true, -1.0, true)
-		draw_circle(Vector2(kx, cy), r, Style.ROSE, true, -1.0, true)
+		draw_circle(Vector2(kx, cy), r, Style.SECONDARY, true, -1.0, true)
 		draw_arc(Vector2(kx, cy), r, 0.0, TAU, 40, Style.INK, 3.0, true)
 		draw_arc(Vector2(kx, cy), r - 8.0, deg_to_rad(200.0), deg_to_rad(285.0), 10, Color(1, 1, 1, 0.5), 4.0, true)
 
@@ -632,7 +646,7 @@ class Icon extends Control:
 			_poly(_ell(p, 0.1, 0.125), _col(Color("f2cf9c")))
 
 	func _i_heart() -> void:
-		_poly(_heart_pts(), _col(Style.ROSE))
+		_poly(_heart_pts(), _col(Style.HEART))
 		_dot(Vector2(0.3, 0.32), 0.05, Color(1, 1, 1, 0.55))
 	func _i_heart_off() -> void:
 		_poly(_heart_pts(), Style.CREAM_SHADE)
