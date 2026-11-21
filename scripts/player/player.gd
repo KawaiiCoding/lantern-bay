@@ -143,7 +143,8 @@ func _ready() -> void:
 	var args := _args()
 	_test = args.get("test", "") == "player"
 	if _test: _demo = args.get("demo", "walk")
-	if args.get("test", "") == "walkabout": _wa = {"on": true, "step": float(args.get("step", "2.5")), "off": float(args.get("off", "0"))}
+	if args.get("test", "") == "walkabout":
+		_wa = {"on": true, "step": float(args.get("step", "2.5")), "off": float(args.get("off", "0"))}
 		if args.has("near"):   # e.g. near=2,5: only grid points around one spot (debugging a stuck report)
 			var nv: PackedStringArray = str(args["near"]).split(",")
 			if nv.size() == 2: _wa["near"] = Vector2(float(nv[0]), float(nv[1]))
