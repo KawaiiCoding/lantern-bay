@@ -628,6 +628,8 @@ func _build_hill() -> void:
 	_col_box(_solid, mid - up * 0.25, Vector3(RAMP_HW * 2.0, 0.5, slope_len + 0.6), 0.0, ang)
 	var bank := PrismMesh.new(); bank.left_to_right = 0.0; bank.size = Vector3(L + 0.4, HILL_TOP + 0.05, RAMP_HW * 2.0 + 0.5)
 	Toys.add(bank, Toys.pmat(Color("93c98a"), Toys.PAT_LEAF), Vector3(RAMP_X, (HILL_TOP + 0.05) * 0.5 - 0.06, (RAMP_Z0 + RAMP_Z1) * 0.5 + 0.2), _static, Vector3.ONE, Vector3(0, -PI / 2, 0))
+	# a solid stone deck under the steps, so no grass shows through the gaps
+	Toys.add(Toys.rbox(RAMP_HW * 2.0, 0.22, slope_len + 0.1, 0.05), Toys.pmat(Color("cdb894"), Toys.PAT_ROCK), mid - up * 0.1, _static, Vector3.ONE, Vector3(ang, 0, 0))
 	var steps := int(L / 0.55)
 	for i in steps:
 		var z := RAMP_Z0 + (i + 0.5) * L / steps
@@ -641,9 +643,12 @@ func _build_hill() -> void:
 			var z: float = RAMP_Z0 + 0.3 + (RAMP_Z1 + 0.3 - RAMP_Z0 - 0.3) * i / n
 			var y := ground_y(RAMP_X, clampf(z, RAMP_Z0, RAMP_Z1))
 			Toys.add(Toys.rcyl(0.06, 0.07, 0.8, 0.03, 8), Toys.pmat(Color("c99a6e"), Toys.PAT_WOOD), Vector3(x, y + 0.4, z), _static)
-		var a := Vector3(x, HILL_TOP + 0.7, RAMP_Z0 + 0.3); var b := Vector3(x, 0.7, RAMP_Z1 + 0.3)
-		var rail := Toys.add(Toys.rcyl(0.04, 0.04, a.distance_to(b), 0.02, 8), Toys.pmat(Color("c99a6e"), Toys.PAT_WOOD), (a + b) * 0.5, _static)
-		rail.rotation = Vector3(PI / 2 - ang, 0, 0)
+		# handrail along the post tops, following the slope (cylinder axis = Y, tilted onto the a->b line)
+		var a := Vector3(x, ground_y(RAMP_X, RAMP_Z0 + 0.3) + 0.78, RAMP_Z0 + 0.3)
+		var b := Vector3(x, ground_y(RAMP_X, RAMP_Z1) + 0.78, RAMP_Z1 + 0.3)
+		var d := b - a
+		var rail := Toys.add(Toys.rcyl(0.04, 0.04, d.length(), 0.02, 8), Toys.pmat(Color("c99a6e"), Toys.PAT_WOOD), (a + b) * 0.5, _static)
+		rail.rotation = Vector3(atan2(d.z, d.y), 0, 0)
 		_col_line(_solid, Vector3(x, 0, RAMP_Z0 + 0.2), Vector3(x, 0, HILL_GATE_Z), 3.0, 0.2)
 	# hill top: windmill, bench, tree, flowers
 	var top := Vector3(HILL_C.x, HILL_TOP, HILL_C.y)

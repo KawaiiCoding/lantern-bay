@@ -519,7 +519,6 @@ func _unstick(want: Vector3, dt: float) -> void:
 			lean = tan.dot(off) if off.length() > 0.001 else 1.0
 		_nudge_side = 1.0 if lean >= 0.0 else -1.0
 	_nudge = tan * _nudge_side * wl * 0.9
-	if not _wa.is_empty() and _wa.has("near"): print("[walkabout] nudge n=", n, " tan=", tan * _nudge_side, " real=", get_real_velocity(), " pos=", global_position)
 
 func _small_obstacle(c: KinematicCollision3D) -> bool:
 	var col := c.get_collider()
