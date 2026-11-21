@@ -24,11 +24,11 @@ var _dbg := ""
 const KEYS := [
 	[0.0, "0c1434", "1d2a52", "8fa6e8", 0.32, "1d2a4a", 0.34],
 	[5.0, "1c2550", "4a4a80", "9fb4ff", 0.2, "44549a", 0.3],
-	[6.3, "7f9fd6", "ffc3a8", "ffc49a", 0.9, "b8a8c8", 0.45],
-	[8.5, "6fb4ee", "fbe0c8", "ffeed2", 1.55, "a8bce0", 0.36],
-	[12.5, "56a2ea", "c6e2f6", "fff2de", 1.6, "a6bce2", 0.34],
-	[16.0, "66a6e6", "f6dcbc", "ffe2b4", 1.6, "b8b0d4", 0.36],
-	[18.2, "8099d8", "ffbf86", "ffb46a", 1.45, "d8b4a8", 0.46],
+	[6.3, "8ea6d6", "ffcbb0", "ffc8a0", 0.8, "c0b0cc", 0.47],
+	[8.5, "8fbde6", "f8e4d2", "ffe6c8", 1.05, "c6bed6", 0.44],
+	[12.5, "86b8e2", "e6ecf2", "ffeedc", 1.1, "c4c4dc", 0.44],
+	[16.0, "8eb4de", "f6dcc4", "ffdcb0", 1.08, "cdbcd2", 0.45],
+	[18.2, "8a9cd2", "ffc492", "ffb878", 1.15, "d8b6ac", 0.48],
 	[19.4, "6a6cb8", "ff9a86", "ff8f66", 0.75, "b08eb4", 0.44],
 	[20.2, "2a3478", "6c6aa8", "8fa6e8", 0.18, "34406e", 0.34],
 	[21.3, "0e1638", "22305a", "8fa6e8", 0.32, "1d2a4a", 0.34],
@@ -235,7 +235,7 @@ func _update(dt: float) -> void:
 	sun.rotation_degrees = Vector3(-elev, az, 0)
 	sun.light_color = lc
 	sun.light_energy = le * (0.85 if _compat else 1.0)
-	sun.shadow_opacity = lerpf(1.0, 0.6, _nf) * (1.0 - 0.5 * cl)
+	sun.shadow_opacity = lerpf(0.78, 0.6, _nf) * (1.0 - 0.45 * cl)   # cozy: soft day shadows
 	sky_mat.set_shader_parameter("moon_dir", -sun.global_transform.basis.z if _nf > 0.5 else Vector3(0.3, 0.5, -0.8))
 	env.ambient_light_color = amb.lerp(Color("aab4c8"), cl * 0.4)
 	env.ambient_light_energy = ae * (1.35 if _compat else 1.0)
@@ -247,8 +247,8 @@ func _update(dt: float) -> void:
 	else:
 		env.fog_mode = Environment.FOG_MODE_DEPTH
 		env.fog_sky_affect = 0.0
-	env.tonemap_exposure = lerpf(0.86, 0.85, _nf) * (1.0 + 0.1 * cl)
-	env.adjustment_saturation = lerpf(1.12, 1.0, cl * 0.6 + rn * 0.3) * lerpf(1.0, 0.92, _nf)
+	env.tonemap_exposure = lerpf(0.84, 0.85, _nf) * (1.0 + 0.1 * cl)
+	env.adjustment_saturation = lerpf(1.04, 0.98, cl * 0.6 + rn * 0.3) * lerpf(1.0, 0.92, _nf)
 	env.glow_intensity = lerpf(0.35, 0.25, _nf)
 	# globals for the toy shaders
 	Toys.set_global("lb_ink_light", lerpf(1.0, 0.45, _nf))

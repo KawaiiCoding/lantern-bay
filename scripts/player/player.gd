@@ -667,7 +667,8 @@ func _place_camera(dt: float, snap: bool) -> void:
 	if _test and _demo.begins_with("portrait"):
 		var face_at := global_position + Vector3(0, 0.95, 0)
 		var fwd := _rig.global_basis.z
-		if _demo == "portrait_side": fwd = _rig.global_basis.x
+		if _demo in ["portrait_side", "portrait_walk", "portrait_sneak"]: fwd = _rig.global_basis.x
+		elif _demo == "portrait_walk_front": fwd = (_rig.global_basis.z + _rig.global_basis.x * 0.6).normalized()
 		elif _demo == "portrait_back": fwd = -_rig.global_basis.z
 		camera.global_position = face_at + fwd * 3.3 + Vector3(0, 0.8, 0)
 		camera.look_at(face_at + Vector3(0, -0.1, 0), Vector3.UP)
@@ -736,6 +737,10 @@ func _demo_move() -> Vector2:
 			return Vector2.ZERO
 		"none", "portrait", "portrait_side", "portrait_back":
 			return Vector2.ZERO
+		"portrait_walk", "portrait_walk_front":   # close-up of the walk cycle (arm/leg swing)
+			return Vector2(1, 0)
+		"portrait_sneak":
+			return Vector2(0.4, 0)
 		"full":
 			if t < 0.6: return Vector2(0.55, -0.85).normalized()
 			if t > 1.35 and t < 1.6: return Vector2(-1, 0)          # stand up from sitting by moving

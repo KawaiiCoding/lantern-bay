@@ -154,7 +154,10 @@ func _process(dt: float) -> void:
 func _apply_unlocks() -> void:
 	if not is_instance_valid(main) or not is_instance_valid(main.hud): return
 	var hud: Node = main.hud
-	var book_ok := GameState.day >= 2 or not GameState.fish_log.is_empty() or _done("pet_cat") or _done("talk_pip")
+	var any_fact := false
+	for c in GameState.cats.values():
+		if typeof(c) == TYPE_DICTIONARY and not (c.get("facts", []) as Array).is_empty(): any_fact = true; break
+	var book_ok := GameState.day >= 2 or any_fact or not GameState.fish_log.is_empty() or _done("pet_cat") or _done("talk_pip")
 	var spark_ok := GameState.sparks > 0 or bool(GameState.flags.get("sparks_seen", false))
 	if spark_ok: GameState.flags["sparks_seen"] = true
 	if GameState.day >= 2 and not bool(GameState.flags.get("moped_unlocked", false)):
