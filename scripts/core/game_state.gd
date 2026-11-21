@@ -73,12 +73,37 @@ func time_slot() -> String:
 	if h >= 11.0 and h < 17.0: return "afternoon"
 	if h >= 17.0 and h < 21.0: return "evening"
 	return "night"
-func weather() -> String:
-	var r := _rand01(day * 7919 + 17)
-	if r < 0.5: return "sunny"
-	if r < 0.75: return "cloudy"
-	if r < 0.95: return "rain"
-	return "fog"
+## Weather is fixed per day (same for everyone, survives reloads). Rules from Data:
+## day 1 always sunny, no fog before WEATHER_FOG_MIN_DAY, fog forced after WEATHER_FOG_MAX_GAP days without it.
+## `fog_gap_override` lets a perk (Wen's fog bell) shorten the gap; People sets it.
+var fog_gap_override := 0
+var _weather_cache := {}
+func weather() -> String: return weather_on(day)
+func weather_on(d: int) -> String:
+	var gap: int = fog_gap_override if fog_gap_override > 0 else int(Data.get("WEATHER_FOG_MAX_GAP") if Data.get("WEATHER_FOG_MAX_GAP") != null else 14)
+	var key := "%d:%d" % [d, gap]
+	if _weather_cache.has(key): return _weather_cache[key]
+	var odds: Dictionary = Data.get("WEATHER_ODDS") if Data.get("WEATHER_ODDS") != null else {"sunny": 0.5, "cloudy": 0.25, "rain": 0.2, "fog": 0.05}
+	var fog_min := int(Data.get("WEATHER_FOG_MIN_DAY") if Data.get("WEATHER_FOG_MIN_DAY") != null else 4)
+	var last_fog := 0
+	var w := "sunny"
+	for i in range(1, d + 1):
+		if i == 1:
+			w = "sunny"
+		elif i >= fog_min and i - max(last_fog, fog_min - 1) >= gap:
+			w = "fog"
+		else:
+			var r := _rand01(i * 7919 + 17)
+			w = "sunny"
+			var acc := 0.0
+			for k in ["sunny", "cloudy", "rain", "fog"]:
+				acc += float(odds.get(k, 0.0))
+				if r < acc:
+					w = k; break
+			if w == "fog" and i < fog_min: w = "cloudy"
+		if w == "fog": last_fog = i
+	_weather_cache[key] = w
+	return w
 func low_tide() -> bool:
 	var h := hour()
 	return (h >= 6.0 and h < 9.0) or (h >= 18.0 and h < 21.0)
@@ -196,7 +221,9 @@ func _read(path: String) -> Variant:
 func load_game() -> void:
 	var d = _read(SAVE_PATH)
 	if d == null: d = _read("user://save.bak.json")   # fall back to the previous good save
-	if d == null: return
+	if d == null:
+		_apply_start()   # brand new game
+		return
 	day = int(d.get("day", 1)); minute = float(d.get("minute", DAY_START)); coins = int(d.get("coins", 500))
 	sparks = int(d.get("sparks", 0)); rod_level = clampi(int(d.get("rod_level", 1)), 1, 3)
 	bag = _dict(d, "bag"); fish_log = _dict(d, "fish_log"); cats = _dict(d, "cats"); shore_log = _dict(d, "shore_log")
@@ -214,8 +241,16 @@ func _dict(d: Dictionary, key: String) -> Dictionary:
 	var v = d.get(key, {})
 	return v if typeof(v) == TYPE_DICTIONARY else {}
 
+func _apply_start() -> void:
+	coins = int(Data.get("STARTING_YEN") if Data.get("STARTING_YEN") != null else 500)
+	var sb = Data.get("STARTING_BAG")
+	if typeof(sb) == TYPE_DICTIONARY:
+		for k in sb: bag[k] = int(sb[k])
+
 func reset() -> void:
 	for f in ["save.json", "save.bak.json", "save.json.tmp"]:
 		if FileAccess.file_exists("user://" + f): DirAccess.remove_absolute(ProjectSettings.globalize_path("user://" + f))
 	day = 1; minute = DAY_START; coins = 500; sparks = 0; rod_level = 1
 	bag = {}; fish_log = {}; cats = {}; shore_log = {}; requests = []; lanterns = {}; cosmetics = {}; flags = {}; people = {}
+	_weather_cache = {}
+	_apply_start()
