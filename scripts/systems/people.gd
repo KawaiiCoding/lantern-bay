@@ -357,6 +357,9 @@ func talk(id: String) -> void:
 	else:
 		lines = [_pick_line(id)]
 	lines.append_array(_take_notes(id))
+	if ev.is_empty():
+		var tip := _tip_for(id)
+		if tip != "": lines.append(tip)
 	_open_dialogue(id, lines)
 	if int(st.get("last_talk_day", 0)) != GameState.day:
 		st["last_talk_day"] = GameState.day
@@ -529,6 +532,103 @@ func _on_dialogue_finished() -> void:
 	var n := node(_talking_id)
 	if n: n.set_talking(false)
 	_talking_id = ""
+
+# ---------------------------------------------------------------- practical tips
+## One short, practical tip per talk (last page), about what the player has not done yet.
+## Each tip: {id, text, done (already followed), at (spots where it fits best), info (true = once is enough)}.
+## A followed tip never shows again; an info tip shows once; an unfollowed one may come back after 2 days.
+const TIP_REPEAT_DAYS := 2
+const TIP_MAX := 110
+
+func _any_cat(field: String) -> bool:
+	for c in GameState.cats.values():
+		if c is Dictionary and int(c.get(field, 0)) > 0: return true
+	return false
+
+func _shore_has(ids: Array) -> bool:
+	for k in GameState.shore_log.keys():
+		var base := str(k).split(":")[0]
+		if base in ids or str(k) in ids: return true
+	return false
+
+func _tips(id: String) -> Array:
+	var fished := not GameState.fish_log.is_empty()
+	var harbour_cost := int(_dget(_dget(Data.LANTERNS, "harbour", {}), "cost", 12))
+	match id:
+		"moss": return [
+			{"id": "moss_pier", "done": fished, "at": ["pier", "pier_end"],
+				"text": "Fish off the end of the pier. Little dips are teasing. Tap when the bobber goes right under."},
+			{"id": "moss_shadow", "info": true, "done": not fished, "at": ["pier", "pier_end", "beach"],
+				"text": "Watch the shadow. Big shadow, big fish. Small one? Reel in and cast again. Costs you nothing."},
+			{"id": "moss_rain", "info": true, "done": false, "at": [],
+				"text": "Rain is when the big ones bite. They get greedy when the sky is busy. Bring a hat."},
+			{"id": "moss_dusk", "info": true, "done": not fished, "at": ["pier"],
+				"text": "Morning and evening fish differently. Same pier, different crowd. Try both before you judge it."},
+		]
+		"maple": return [
+			{"id": "maple_slow", "done": _any_cat("hearts"), "at": ["plaza", "beach"],
+				"text": "Walk slowly near cats. A small push on the stick. Trot at them and the shy ones just leave."},
+			{"id": "maple_treat", "done": _any_cat("last_treat_day"), "at": [],
+				"text": "Every cat has a favourite treat. Pancake would sell the shop for Tuna Bites. Pip stocks them."},
+			{"id": "maple_sit", "done": _any_cat("last_sit_day"), "at": ["plaza"],
+				"text": "Sit near a cat and do nothing. Hardest thing in the world. They come closer, eventually."},
+		]
+		"pip": return [
+			{"id": "pip_sell", "done": bool(GameState.flags.get("sold_any", false)), "at": ["shop_counter", "shop"],
+				"text": "I buy fish, shells, sea glass. Most of what the sea coughs up, really. Not boots. Usually."},
+			{"id": "pip_board", "done": int(GameState.flags.get("requests_done", 0)) > 0, "at": ["shop_counter", "shop"],
+				"text": "The request board by the shop changes every morning. Neighbours pay well, and they remember."},
+			{"id": "pip_special", "info": true, "done": not fished, "at": [],
+				"text": "Check the board for my daily special. One fish sells for double that day. Plan around it."},
+		]
+		"fern": return [
+			{"id": "fern_beach", "done": not GameState.shore_log.is_empty(), "at": ["beach", "board"],
+				"text": "The beach refills every morning. Shells, sea glass, the odd bottle. Pick it all up once."},
+			{"id": "fern_flats", "done": _shore_has(["sand_dollar", "razor_shell", "moon_shell", "star_stone"]), "at": ["beach"],
+				"text": "Low tide is six to nine, morning and evening. The flats open up. Sand dollars, if you are quick."},
+			{"id": "fern_bottle", "done": _shore_has(["bottle"]), "at": ["beach"],
+				"text": "Find a bottle, read the note. Ines wrote them. They know more than they let on."},
+		]
+		"wen": return [
+			{"id": "wen_weather", "info": true, "done": false, "at": [],
+				"text": "Weather sets the day here. Rain for big fish, fog for strange things. Look up before you plan."},
+			{"id": "wen_fog", "info": true, "done": GameState.day < 2, "at": ["lighthouse"],
+				"text": "A low mist on the evening horizon means fog tomorrow. Fog days are worth getting up for."},
+			{"id": "wen_order", "done": GameState.lanterns.has("lighthouse"), "at": ["lighthouse"],
+				"text": "My lamp is the last one. Harbour first, then the hill. Ines was particular about the order."},
+		]
+		"cotton": return [
+			{"id": "cotton_sparks", "done": GameState.sparks > 0 or GameState.lanterns.size() > 0, "at": [],
+				"text": "Every first is a spark. A new fish, a new shell, a cat who decides you are fine."},
+			{"id": "cotton_lantern", "done": GameState.lanterns.has("harbour"), "at": ["board", "plaza"],
+				"text": "%d sparks lights the Harbour Lantern, by the pier. Walk up to it once you have them." % harbour_cost},
+		]
+	return []
+
+## The tip for this talk ("" if none is helpful right now). Records it as shown.
+func _tip_for(id: String) -> String:
+	var st := GameState.person_state(id)
+	var shown: Dictionary = st.get("tips", {}) if st.get("tips") is Dictionary else {}
+	var here := str(_cur_spot.get(id, ""))
+	var best := {}
+	var best_score := -INF
+	for t in _tips(id):
+		if bool(t.get("done", false)): continue
+		var tid := str(t.get("id", ""))
+		var text := str(t.get("text", ""))
+		if tid == "" or text == "" or text.length() > TIP_MAX: continue
+		var score := 0.0
+		if shown.has(tid):
+			if bool(t.get("info", false)): continue
+			if GameState.day - int(shown[tid]) < TIP_REPEAT_DAYS: continue
+			score -= 10.0
+		if here in _arr(t.get("at", [])): score += 2.0
+		if tid == "moss_rain" and GameState.weather() == "rain": score += 3.0
+		if score > best_score: best_score = score; best = t
+	if best.is_empty(): return ""
+	shown[str(best.id)] = GameState.day
+	st["tips"] = shown
+	return str(best.text)
 
 # ---------------------------------------------------------------- friendship + perks
 func _add_points(id: String, pts: int, why: String) -> void:

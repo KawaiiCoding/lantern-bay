@@ -38,13 +38,11 @@ func setup(m: Node) -> void:
 	var hb := HBoxContainer.new(); hb.add_theme_constant_override("separation", 8)
 	hb.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_chip.add_child(hb)
-	var tag := Style.label("GOAL", 13, Color("fffaf2"), true)
-	var tsb := StyleBoxFlat.new(); tsb.bg_color = Style.GOLD_DARK; tsb.set_corner_radius_all(6)
-	tsb.content_margin_left = 6; tsb.content_margin_right = 6; tsb.content_margin_top = 1; tsb.content_margin_bottom = 1
-	tag.add_theme_stylebox_override("normal", tsb)
-	tag.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	tag.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	hb.add_child(tag)
+	# the same gold star as the goal marker on the map, so "go to the star" reads instantly
+	var star := StarIcon.new(); star.custom_minimum_size = Vector2(26, 26)
+	star.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	star.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hb.add_child(star)
 	_label = Style.label("", 17, Style.INK, false)
 	_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_label.autowrap_mode = TextServer.AUTOWRAP_OFF
@@ -186,3 +184,18 @@ func _on_chip_input(e: InputEvent) -> void:
 		GameState.flags["goal_chip_folded"] = not bool(GameState.flags.get("goal_chip_folded", false))
 		GameState.save_soon()
 		_chip.accept_event()
+
+
+## Gold star with an ink outline (matches the map's goal star).
+class StarIcon extends Control:
+	func _draw() -> void:
+		var c := size / 2.0
+		var rad := minf(size.x, size.y) * 0.48
+		var pts := PackedVector2Array()
+		for i in 10:
+			var a := -PI / 2 + i * PI / 5
+			var rr := rad if i % 2 == 0 else rad * 0.45
+			pts.append(c + Vector2(cos(a), sin(a)) * rr)
+		draw_colored_polygon(pts, Style.GOLD)
+		pts.append(pts[0])
+		draw_polyline(pts, Style.INK, 2.0, true)

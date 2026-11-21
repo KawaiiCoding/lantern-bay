@@ -85,6 +85,9 @@ var _night_check := 0.0
 var _air_time := 0.0
 var _hop_tw: Tween
 var _hop_time := 0.0
+var _nudge := Vector3.ZERO         # sideways steer around a small obstacle we walked into head-on
+var _nudge_side := 0.0
+var _blocked_t := 0.0
 
 var _test := false
 var _demo := ""
@@ -140,7 +143,7 @@ func _ready() -> void:
 	var args := _args()
 	_test = args.get("test", "") == "player"
 	if _test: _demo = args.get("demo", "walk")
-	if args.get("test", "") == "walkabout": _wa = {"on": true, "step": float(args.get("step", "2.5"))}
+	if args.get("test", "") == "walkabout": _wa = {"on": true, "step": float(args.get("step", "2.5")), "off": float(args.get("off", "0"))}
 
 ## Collect the tagged parts of a Shiba (meta "part") that we animate.
 func _scan_bear(b: Node3D, _with_limbs := true) -> void:
@@ -451,12 +454,13 @@ func _physics_process(dt: float) -> void:
 		var l := move_toward(hv.length(), want.length(), rate * dt)
 		hv = Vector3(sin(ang), 0, cos(ang)) * l
 	else:
-		hv = hv.move_toward(want, rate * dt)
+		hv = hv.move_toward(want + _nudge, rate * dt)
 	velocity.x = hv.x; velocity.z = hv.z
 
 	if is_on_floor(): velocity.y = minf(velocity.y, 0.0)
 	velocity.y -= GRAVITY * dt
 	move_and_slide()
+	_unstick(want, dt)
 	_air_time = 0.0 if is_on_floor() else _air_time + dt
 	if global_position.y < FALL_Y or _air_time > AIR_RESPAWN: _respawn()
 
@@ -479,6 +483,50 @@ func _physics_process(dt: float) -> void:
 		_was_moving = true
 
 	_find_interactable()
+
+## Gentle unstuck: walking head-on into a small round thing (post, lamp, bollard, a standing person) would
+## stop Mocha dead, because the slide has no sideways component. After a moment, steer around it.
+## Big walls/buildings are left alone (pushing into a wall should just stop).
+func _unstick(want: Vector3, dt: float) -> void:
+	var wl := want.length()
+	var real := get_real_velocity(); real.y = 0.0
+	var hit: KinematicCollision3D = null
+	if wl > 0.5 and real.length() < wl * 0.4:
+		var best := -0.6
+		for k in get_slide_collision_count():
+			var c := get_slide_collision(k)
+			var n := c.get_normal(); n.y = 0.0
+			if n.length() < 0.3: continue
+			var d := n.normalized().dot(want / wl)
+			if d < best and _small_obstacle(c): best = d; hit = c
+	if hit == null:
+		_blocked_t = 0.0
+		_nudge = _nudge.move_toward(Vector3.ZERO, 8.0 * dt)
+		if _nudge.length() < 0.05: _nudge_side = 0.0
+		return
+	_blocked_t += dt
+	if _blocked_t < 0.06: return
+	var n := hit.get_normal(); n.y = 0.0; n = n.normalized()
+	var tan := Vector3(-n.z, 0, n.x)
+	if _nudge_side == 0.0:
+		var lean := tan.dot(want / wl)
+		if absf(lean) < 0.05:   # dead centre: pass on the side of the contact we are already offset to
+			var off := global_position - hit.get_position(); off.y = 0.0
+			lean = tan.dot(off) if off.length() > 0.001 else 1.0
+		_nudge_side = 1.0 if lean >= 0.0 else -1.0
+	_nudge = tan * _nudge_side * wl * 0.9
+
+func _small_obstacle(c: KinematicCollision3D) -> bool:
+	var col := c.get_collider()
+	if col is AnimatableBody3D or col is CharacterBody3D: return true   # townsfolk / cats
+	var sh = c.get_collider_shape()
+	if not (sh is CollisionShape3D) or (sh as CollisionShape3D).shape == null: return false
+	var s: Shape3D = (sh as CollisionShape3D).shape
+	if s is CylinderShape3D: return (s as CylinderShape3D).radius <= 0.7
+	if s is CapsuleShape3D: return (s as CapsuleShape3D).radius <= 0.7
+	if s is SphereShape3D: return (s as SphereShape3D).radius <= 0.7
+	if s is BoxShape3D: return maxf((s as BoxShape3D).size.x, (s as BoxShape3D).size.z) <= 1.0
+	return false
 
 func _respawn() -> void:
 	velocity = Vector3.ZERO
@@ -850,9 +898,10 @@ func _walkabout_begin() -> void:
 	var pts: Array[Vector3] = []
 	if is_instance_valid(isl) and isl.has_method("is_walkable"):
 		var st: float = maxf(0.5, float(_wa.get("step", 2.5)))
-		var x := -60.0
+		var off: float = float(_wa.get("off", 0.0))
+		var x := -60.0 + off
 		while x <= 60.0:
-			var z := -60.0
+			var z := -60.0 + off
 			while z <= 60.0:
 				var p := Vector3(x, 0, z)
 				if isl.is_walkable(p): pts.append(p)
@@ -906,10 +955,13 @@ func _walkabout_step(dt: float) -> void:
 	if _wa["t"] < 0.0:   # start a run: teleport back to the grid point at rest
 		global_position = _wa_ground(p) + Vector3(0, 0.02, 0)
 		velocity = Vector3.ZERO
-		_wa["t"] = 0.0; _wa["hits"] = {}; _wa["from"] = Vector3.ZERO
+		_wa["t"] = 0.0; _wa["hits"] = {}; _wa["from"] = Vector3.ZERO; _wa["stall"] = 0
 	InputBridge.touch_move = mv
 	var t: float = _wa["t"]
 	if t >= WA_MEASURE and _wa["from"] == Vector3.ZERO: _wa["from"] = global_position
+	if t >= WA_MEASURE:
+		var rv := get_real_velocity(); rv.y = 0.0
+		if rv.length() < WALK_SPEED * 0.2: _wa["stall"] = int(_wa["stall"]) + 1
 	for k in get_slide_collision_count():
 		var c := get_slide_collision(k)
 		if c.get_normal().y > 0.7: continue   # floor
@@ -929,8 +981,8 @@ func _walkabout_step(dt: float) -> void:
 	var dir := _wa_world_dir(mv)
 	if _wa_open_ahead(p, dir):
 		_wa["open"] += 1
-		if moved < expect * 0.2:
-			_wa["stuck"].append("at (%.1f, %.1f) dir (%.2f, %.2f) moved %.2f m of %.2f; hit %s" % [p.x, p.z, dir.x, dir.z, moved, expect, str(_wa["hits"].keys())])
+		if moved < expect * 0.2 or int(_wa["stall"]) >= 9:
+			_wa["stuck"].append("at (%.1f, %.1f) dir (%.2f, %.2f) moved %.2f m of %.2f, stalled %d frames; hit %s" % [p.x, p.z, dir.x, dir.z, moved, expect, int(_wa["stall"]), str(_wa["hits"].keys())])
 	_wa["t"] = -1.0
 	_wa["d"] = int(_wa["d"]) + 1
 	if _wa["d"] >= WA_DIRS.size():
