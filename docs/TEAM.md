@@ -68,3 +68,20 @@ Any Node3D in group "interactable" with `var interact_radius: float`, `func get_
 ## Music (added)
 - `Music` autoload plays the jazz by time of day. Settings: `Music.set_enabled(bool)`, `Music.set_volume(0..1)`, `Music.enabled()`, `Music.volume()`. UI: add a small Settings panel (music on/off + volume slider) reachable from the Notebook.
 - Credits (Pixabay license): "Coffee Jazz" by Aurec; "Cozy Relax Jazz" by Denis Pavlov Music.
+
+## Characters must look right (owner, binding)
+- Every character (Mocha, cats, townsfolk, Pip) stands with feet exactly on the ground: the lowest point of its meshes = island.ground_y(x, z) (tolerance 2 cm), never floating, never sunk, also on the pier, the hill and benches/walls they sit on.
+- Nothing creepy: correct proportions, eyes level and symmetrical, no mesh poking through another, no stretched or flipped parts, no sliding feet (walk speed matches the step animation), characters face where they walk, no jitter.
+- Verify with a close-up screenshot of each character type and look at it critically before reporting done.
+
+## Testing times of day
+`godot --path . -- time=21:30 shot=/tmp/x.png wait=3` jumps the clock; `speed=20` fast-forwards (whole day in ~36 s).
+
+## Text people can actually read (owner, binding)
+- Short: toasts max ~60 characters, one line idea. Dialogue lines max ~110 characters per page. Cat bubbles: a word or an icon.
+- Enough time: toasts stay ~1.5 s + 0.06 s per character (min 2.5 s, max 6 s), queued one at a time (never stacked, never replaced mid-read); duplicates within 10 s are dropped; at most one toast every 1.5 s.
+- Nothing important disappears on its own: dialogue, catch cards, shop results and notes wait for a tap.
+- Don't pile up: never more than one message + one bubble competing for attention; don't toast what's already visible on screen (e.g. a catch card already shows the size).
+
+## Palette (owner)
+Gender-neutral UI: primary teal #2f7f79, ochre #e0a64a, mustard #f2c14e, sage #7fae93, terracotta #c7693f, cream #fffaf2, ink #6b4a3a. No pink/rose UI accents (use Style constants).

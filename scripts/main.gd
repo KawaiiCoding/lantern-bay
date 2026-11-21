@@ -53,6 +53,12 @@ func _ready() -> void:
 		var kv: PackedStringArray = a.split("=", true, 1)
 		if kv.size() == 2: args[kv[0]] = kv[1]
 	if args.has("fresh"): GameState.reset()
+	# `time=21:30` jumps the island clock (for screenshots / testing evenings and nights)
+	if args.has("time"):
+		var hm: PackedStringArray = String(args["time"]).split(":")
+		GameState.minute = float(hm[0]) * 60.0 + (float(hm[1]) if hm.size() > 1 else 0.0)
+	# `speed=20` makes the clock run faster (watch a whole day go by)
+	if args.has("speed"): Engine.time_scale = float(args["speed"])
 	if args.has("shot"):
 		await get_tree().create_timer(float(args.get("wait", "2"))).timeout
 		await RenderingServer.frame_post_draw
