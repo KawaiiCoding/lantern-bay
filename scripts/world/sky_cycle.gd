@@ -18,20 +18,21 @@ var _compat := false
 var _nf := 0.0
 var _wx := {"cloud": 0.0, "rain": 0.0, "fog": 0.0}
 var _first := true
+var _dbg := ""
 
 # hour, sky top, horizon, light colour, light energy, ambient colour, ambient energy
 const KEYS := [
-	[0.0, "101840", "26336a", "9fb4ff", 0.22, "3a4a8a", 0.26],
+	[0.0, "0c1434", "1d2a52", "8fa6e8", 0.32, "1d2a4a", 0.34],
 	[5.0, "1c2550", "4a4a80", "9fb4ff", 0.2, "44549a", 0.3],
 	[6.3, "7f9fd6", "ffc3a8", "ffc49a", 0.9, "b8a8c8", 0.45],
-	[8.5, "7fbcef", "fde1c6", "fff0d8", 1.6, "b4c8e4", 0.5],
-	[12.5, "62aaea", "cfe6f5", "fff6e8", 1.85, "bcd0ea", 0.52],
-	[16.0, "72aee8", "f8dfc0", "ffe6c0", 1.75, "cfc4d8", 0.5],
+	[8.5, "6fb4ee", "fbe0c8", "ffeed2", 1.55, "a8bce0", 0.36],
+	[12.5, "56a2ea", "c6e2f6", "fff2de", 1.6, "a6bce2", 0.34],
+	[16.0, "66a6e6", "f6dcbc", "ffe2b4", 1.6, "b8b0d4", 0.36],
 	[18.2, "8099d8", "ffbf86", "ffb46a", 1.45, "d8b4a8", 0.46],
 	[19.4, "6a6cb8", "ff9a86", "ff8f66", 0.75, "b08eb4", 0.44],
-	[20.2, "3a3f88", "8e70b0", "9fb0ff", 0.2, "6a6aa8", 0.42],
-	[21.3, "121a44", "2c3a72", "9fb4ff", 0.22, "3a4a8a", 0.26],
-	[24.0, "101840", "26336a", "9fb4ff", 0.22, "3a4a8a", 0.26],
+	[20.2, "2a3478", "6c6aa8", "8fa6e8", 0.18, "34406e", 0.34],
+	[21.3, "0e1638", "22305a", "8fa6e8", 0.32, "1d2a4a", 0.34],
+	[24.0, "0c1434", "1d2a52", "8fa6e8", 0.32, "1d2a4a", 0.34],
 ]
 
 const SKY_SHADER := """
@@ -64,6 +65,7 @@ func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
 		var kv: PackedStringArray = a.split("=", true, 1)
 		if kv.size() == 2 and kv[0] == "weather": force_weather = kv[1]
+		if kv.size() == 2 and kv[0] == "skydbg": _dbg = kv[1]
 	Toys.ensure_globals()
 	_compat = RenderingServer.get_current_rendering_method() == "gl_compatibility"
 	var mobile := RenderingServer.get_current_rendering_method() == "mobile"
@@ -81,8 +83,10 @@ func _ready() -> void:
 	env.tonemap_white = 5.0
 	env.glow_enabled = true
 	env.glow_intensity = 0.45
-	env.glow_bloom = 0.03
-	env.glow_hdr_threshold = 0.95
+	env.glow_bloom = 0.0
+	env.glow_hdr_threshold = 1.2
+	env.glow_blend_mode = Environment.GLOW_BLEND_MODE_ADDITIVE
+	for lv in 7: env.set_glow_level(lv, 1.0 if lv < 3 else 0.0)
 	env.ssao_enabled = not _compat and not mobile
 	env.ssao_radius = 1.0; env.ssao_intensity = 1.6; env.ssao_power = 1.4
 	env.fog_enabled = true
@@ -224,14 +228,14 @@ func _update(dt: float) -> void:
 	sky_mat.set_shader_parameter("moon", _nf * (1.0 - fg))
 	# sun path (day) / moon (night); never fully overhead so toys keep shape
 	var day_t := clampf((h - 6.0) / 14.0, 0.0, 1.0)
-	var elev := lerpf(14.0, 52.0, sin(day_t * PI))
+	var elev := lerpf(14.0, 46.0, sin(day_t * PI))
 	var az := lerpf(70.0, -60.0, day_t)
 	if _nf > 0.5:
 		elev = 48.0; az = 25.0
 	sun.rotation_degrees = Vector3(-elev, az, 0)
 	sun.light_color = lc
 	sun.light_energy = le * (0.85 if _compat else 1.0)
-	sun.shadow_opacity = lerpf(0.85, 0.6, _nf) * (1.0 - 0.5 * cl)
+	sun.shadow_opacity = lerpf(1.0, 0.6, _nf) * (1.0 - 0.5 * cl)
 	sky_mat.set_shader_parameter("moon_dir", -sun.global_transform.basis.z if _nf > 0.5 else Vector3(0.3, 0.5, -0.8))
 	env.ambient_light_color = amb.lerp(Color("aab4c8"), cl * 0.4)
 	env.ambient_light_energy = ae * (1.35 if _compat else 1.0)
@@ -243,11 +247,12 @@ func _update(dt: float) -> void:
 	else:
 		env.fog_mode = Environment.FOG_MODE_DEPTH
 		env.fog_sky_affect = 0.0
-	env.tonemap_exposure = lerpf(0.9, 0.85, _nf) * (1.0 + 0.1 * cl)
-	env.adjustment_saturation = lerpf(1.12, 1.0, cl * 0.6 + rn * 0.3)
+	env.tonemap_exposure = lerpf(0.86, 0.85, _nf) * (1.0 + 0.1 * cl)
+	env.adjustment_saturation = lerpf(1.12, 1.0, cl * 0.6 + rn * 0.3) * lerpf(1.0, 0.92, _nf)
+	env.glow_intensity = lerpf(0.35, 0.25, _nf)
 	# globals for the toy shaders
 	Toys.set_global("lb_ink_light", lerpf(1.0, 0.45, _nf))
-	Toys.set_global("lb_glow", lerpf(0.25, 2.6, smoothstep(0.0, 0.7, _nf + rn * 0.3 + fg * 0.3)))
+	Toys.set_global("lb_glow", lerpf(0.25, 1.7, smoothstep(0.0, 0.7, _nf + rn * 0.3 + fg * 0.3)))
 	Toys.set_global("lb_day", 1.0 - _nf)
 	Toys.set_global("lb_cloud", lerpf(0.55, 0.15, cl) * (1.0 - _nf) * (1.0 - fg))
 	Toys.set_global("lb_wet", rn)
@@ -260,8 +265,15 @@ func _update(dt: float) -> void:
 			var base: float = float(l.get_meta("base_energy", 1.6))
 			var on := clampf(lamp_on * 1.4 - fmod(i * 0.137, 0.4), 0.0, 1.0)
 			(l as Light3D).light_energy = base * on
-			(l as Light3D).visible = on > 0.01
+			(l as Light3D).visible = on > 0.01 and not ("lamps" in _dbg)
 		i += 1
+	if _dbg != "":
+		if "fog" in _dbg: env.fog_enabled = false
+		if "glow" in _dbg: env.glow_enabled = false
+		if "ssao" in _dbg: env.ssao_enabled = false
+		if "adj" in _dbg: env.adjustment_enabled = false
+		if "sun" in _dbg: sun.visible = false
+		if "amb" in _dbg: env.ambient_light_energy = 0.0
 	# weather particles follow the camera focus
 	var cam := get_viewport().get_camera_3d() if is_inside_tree() else null
 	rain.emitting = rn > 0.5

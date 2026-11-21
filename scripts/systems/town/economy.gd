@@ -135,6 +135,7 @@ static func sell(key: String, n: int) -> int:
 	if not GameState.remove_item(key, n): return 0
 	var total := price * n
 	GameState.add_coins(total)
+	GameState.flags["sold_any"] = true
 	GameState.save_soon()
 	return total
 

@@ -22,6 +22,7 @@ const PARTS := [
 	["people", "res://scripts/systems/people.gd"],
 	["town", "res://scripts/systems/town.gd"],
 	["lanterns", "res://scripts/systems/lanterns.gd"],
+	["goals", "res://scripts/systems/goals.gd"],
 	["hud", "res://scripts/ui/hud.gd"],
 ]
 

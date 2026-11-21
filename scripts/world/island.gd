@@ -971,10 +971,10 @@ func _build_lighthouse() -> void:
 	bm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	bm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	bm.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
-	bm.albedo_color = Color(1.0, 0.9, 0.6, 0.16)
+	bm.albedo_color = Color(1.0, 0.9, 0.6, 0.1)
 	bm.cull_mode = BaseMaterial3D.CULL_DISABLED
 	for s in [-1.0, 1.0]:
-		var cone := Toys.add(Toys.cyl(0.25, 2.6, 22.0, 16), bm, Vector3(s * 11.3, 0, 0), _beam, Vector3(1, 1, 0.35), Vector3(0, 0, s * PI / 2))
+		var cone := Toys.add(Toys.cyl(0.25, 1.6, 9.0, 16), bm, Vector3(s * 4.8, 0.6, 0), _beam, Vector3(1, 1, 0.4), Vector3(0, 0, s * (PI / 2 - 0.12)))
 		cone.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_beam.visible = false
 	# rocks around the point (fishing rocks): some in the water, a few big ones on the shore
@@ -1601,6 +1601,12 @@ func _apply_test_view(v := "") -> void:
 
 func _snap_all() -> void:
 	var prefix: String = _args["snap"]
+	if _args.has("dump"):
+		await get_tree().create_timer(0.8).timeout
+		for l in get_tree().root.find_children("*", "Light3D", true, false):
+			if (l as Light3D).visible and (l as Light3D).light_energy > 0.05:
+				print("LIGHT ", l.get_path(), " ", l.get_class(), " e=", (l as Light3D).light_energy, " c=", (l as Light3D).light_color.to_html(false))
+		for w in get_tree().root.find_children("*", "WorldEnvironment", true, false): print("ENV ", w.get_path())
 	var views: Array = VIEWS
 	if _args.has("views"): views = str(_args["views"]).split(",")
 	await get_tree().create_timer(1.0).timeout

@@ -832,7 +832,7 @@ func _update_bubble(dt: float) -> void:
 	_bub_age += dt
 	var e := smoothstep(0.0, 1.0, _bub_scale)
 	var pop := 1.0 + 0.16 * sin(clampf(_bub_age / 0.28, 0.0, 1.0) * PI)
-	var sc := Vector3.ONE * e * pop
+	var sc := Vector3.ONE * e * pop * 0.62
 	var wiggle := 0.0
 	if _bub_key.begins_with("alert"): wiggle = sin(_t * 26.0) * 0.012 * clampf(1.2 - _bub_age, 0.0, 1.0)
 	_bub.position = Vector3(wiggle, 1.2 + sin(_t * 2.2) * 0.02, 0)

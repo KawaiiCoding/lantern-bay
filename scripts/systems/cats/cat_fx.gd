@@ -2,58 +2,7 @@ extends RefCounted
 ## Cat FX kit: a plush heart mesh, an exclamation mark and small material helpers.
 ## Everything is built from code in the soft toy style (see Toys). No emojis, no external assets.
 
-static var _heart: ArrayMesh = null
 static var _mats := {}
-
-## Shared plush heart mesh (about 1.9 wide, 1.7 tall, 0.9 deep, centred near the origin, facing +Z).
-static func heart_mesh() -> ArrayMesh:
-	if _heart != null:
-		return _heart
-	var n := 56
-	var rings := 6
-	var depth := 0.46
-	var centre := Vector2(0.0, -0.08)
-	var outline: Array[Vector2] = []
-	for i in n:
-		var t := TAU * float(i) / float(n)
-		var x := 16.0 * pow(sin(t), 3.0)
-		var y := 13.0 * cos(t) - 5.0 * cos(2.0 * t) - 2.0 * cos(3.0 * t) - cos(4.0 * t)
-		outline.append(Vector2(x, y) / 17.0)
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	for side in [1.0, -1.0]:
-		for k in rings:
-			var a0 := float(k) / float(rings) * PI * 0.5
-			var a1 := float(k + 1) / float(rings) * PI * 0.5
-			var s0 := cos(a0)
-			var s1 := cos(a1)
-			var z0: float = sin(a0) * depth * side
-			var z1: float = sin(a1) * depth * side
-			for i in n:
-				var j := (i + 1) % n
-				var a := _pt(centre, outline[i], s0, z0)
-				var b := _pt(centre, outline[j], s0, z0)
-				var c := _pt(centre, outline[j], s1, z1)
-				var d := _pt(centre, outline[i], s1, z1)
-				var last := (k == rings - 1)
-				if side > 0.0:
-					_tri(st, a, b, c)
-					if not last: _tri(st, a, c, d)
-				else:
-					_tri(st, a, c, b)
-					if not last: _tri(st, a, d, c)
-	st.generate_normals()
-	_heart = st.commit()
-	return _heart
-
-static func _pt(centre: Vector2, p: Vector2, s: float, z: float) -> Vector3:
-	var q := centre + (p - centre) * s
-	return Vector3(q.x, q.y, z)
-
-static func _tri(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3) -> void:
-	st.add_vertex(a)
-	st.add_vertex(b)
-	st.add_vertex(c)
 
 ## Cached soft material (with a faint glow so hearts read against any light).
 static func soft_mat(c: Color, outline := 0.05, glow := 0.35) -> StandardMaterial3D:
@@ -67,14 +16,18 @@ static func soft_mat(c: Color, outline := 0.05, glow := 0.35) -> StandardMateria
 	_mats[key] = m
 	return m
 
-## One heart mesh node of the given world size (width in metres), already scaled.
-static func heart(size: float, c: Color) -> MeshInstance3D:
-	var mi := MeshInstance3D.new()
-	mi.mesh = heart_mesh()
-	mi.material_override = soft_mat(c)
-	mi.scale = Vector3.ONE * (size * 0.5)
-	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	return mi
+## A plush heart (two round lobes and a cone) of the given world width, facing +Z. Returns a Node3D group.
+static func heart(size: float, c: Color) -> Node3D:
+	var g := Node3D.new()
+	var m := soft_mat(c, 0.0, 0.35)
+	var k := size * 0.5
+	var l1 := Toys.add(Toys.sphere(0.56, 20), m, Vector3(-0.5, 0.3, 0) * k, g, Vector3(1, 1, 0.7) * k)
+	var l2 := Toys.add(Toys.sphere(0.56, 20), m, Vector3(0.5, 0.3, 0) * k, g, Vector3(1, 1, 0.7) * k)
+	var cone := CylinderMesh.new()
+	cone.top_radius = 1.0; cone.bottom_radius = 0.0; cone.height = 1.45; cone.radial_segments = 20
+	var cn := Toys.add(cone, m, Vector3(0, -0.28, 0) * k, g, Vector3(1.0, 1.0, 0.7) * k)
+	for n in [l1, l2, cn]: n.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	return g
 
 ## Exclamation mark, about 0.9 units tall, centred on its middle. Scale the returned node.
 static func exclaim() -> Node3D:
@@ -117,9 +70,8 @@ static func bubble(kind: String, data := {}) -> Node3D:
 		var length := 0.0
 		var text := ""
 		if kind == "hearts":
-			var maxn := int(data.get("max", 5))
-			ry = 0.19
-			length = float(maxn) * 0.2 + 0.3
+			ry = 0.2
+			length = 1.0
 		else:
 			text = String(data.get("text", "")) if kind == "name" else "Zzz"
 			length = maxf(text_width(text) + 0.36, 0.7)
@@ -127,30 +79,17 @@ static func bubble(kind: String, data := {}) -> Node3D:
 		Toys.add(Toys.capsule(ry, length), body, Vector3.ZERO, g, Vector3(1, 1, 0.3), Vector3(0, 0, PI / 2))
 		front = ry * 0.3
 		if kind == "hearts":
-			var maxn2 := int(data.get("max", 5))
-			var filled := int(data.get("n", 0))
-			var from := int(data.get("new_from", filled))
-			for i in maxn2:
-				var on := i < filled
-				var hm := heart(0.17 if on else 0.13, Color("ff5f86") if on else Color("d6cde0"))
-				hm.position = Vector3((float(i) - float(maxn2 - 1) * 0.5) * 0.2, 0.0, front - 0.01)
-				if not on:
-					hm.material_override = soft_mat(Color("d6cde0"), 0.05, 0.0)
-				icon.add_child(hm)
-				if on and i >= from:
-					hm.set_meta("base", hm.scale)
-					pops.append(hm)
+			var hm := heart(0.34, Color("ff5f86"))
+			hm.position = Vector3(-length * 0.5 + 0.3, 0.0, front - 0.01)
+			icon.add_child(hm)
+			hm.set_meta("base", hm.scale)
+			pops.append(hm)
+			text = "%d/%d" % [int(data.get("n", 0)), int(data.get("max", 5))]
+			var lb2 := _text_label(text)
+			lb2.position = Vector3(0.14, 0.005, front + 0.012)
+			icon.add_child(lb2)
 		else:
-			var lb := Label3D.new()
-			lb.text = text
-			lb.font_size = TEXT_SIZE
-			lb.pixel_size = TEXT_PX
-			lb.modulate = INK_TEXT
-			lb.outline_size = 0
-			lb.shaded = false
-			lb.double_sided = false
-			lb.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-			lb.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+			var lb := _text_label(text)
 			lb.position = Vector3(0, 0.005, front + 0.012)
 			icon.add_child(lb)
 	else:
@@ -179,6 +118,19 @@ static func bubble(kind: String, data := {}) -> Node3D:
 	g.set_meta("pops", pops)
 	_no_shadow(g)
 	return g
+
+static func _text_label(text: String) -> Label3D:
+	var lb := Label3D.new()
+	lb.text = text
+	lb.font_size = TEXT_SIZE
+	lb.pixel_size = TEXT_PX
+	lb.modulate = INK_TEXT
+	lb.outline_size = 0
+	lb.shaded = false
+	lb.double_sided = false
+	lb.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lb.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	return lb
 
 static func text_width(text: String) -> float:
 	var f: Font = ThemeDB.fallback_font

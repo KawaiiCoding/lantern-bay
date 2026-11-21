@@ -348,6 +348,7 @@ func _on_action() -> void:
 		sit(false)
 
 func _on_ride() -> void:
+	if not bool(GameState.flags.get("moped_unlocked", false)) and GameState.day < 2: return   # Pip lends the moped on day 2
 	if busy or sitting or _hopping or GameState.paused: return
 	_hop_toggle_ride()
 

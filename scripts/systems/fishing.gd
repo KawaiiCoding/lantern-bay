@@ -453,7 +453,9 @@ func _start_reel() -> void:
 	_fish_pos = _target
 	_fish_lat = 0.0
 	_ripple_t = 0.0
-	ui.show_reel(_fish)
+	var cam := get_viewport().get_camera_3d()
+	var low := cam != null and cam.unproject_position(_target).y > get_viewport().get_visible_rect().size.y * 0.55
+	ui.show_reel(_fish, low)
 
 func _tick_reel(dt: float) -> void:
 	var junk: bool = _fish.get("junk", false)
@@ -862,3 +864,10 @@ func _test_shot(suffix: String) -> void:
 func _test_card_shot() -> void:
 	await get_tree().create_timer(0.5).timeout
 	_test_shot("card")
+	if _test.has("close"):                     # close=1: tap the card away and check the player is free
+		await get_tree().create_timer(0.6).timeout
+		_on_action_pressed()
+		await get_tree().create_timer(0.6).timeout
+		var mp = main.get("player") if is_instance_valid(main) else null
+		print("[fishing test] card closed: state ", S.keys()[state], " busy=", mp.get("busy") if is_instance_valid(mp) else "n/a",
+			" log=", GameState.fish_log.get(str(_info.get("id", "")), {}), " paused=", GameState.paused)

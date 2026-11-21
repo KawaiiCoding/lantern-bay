@@ -704,7 +704,7 @@ func give_gifts() -> int:
 		if item == "": continue
 		var key := item if item.contains(":") else "shore:" + item
 		GameState.add_item(key, 1)
-		GameState.say("%s left a %s on the porch." % [bubble_name(String(id)), item_name(key)])
+		GameState.say("%s left %s on the porch." % [bubble_name(String(id)), item_name(key)])
 		given += 1
 	if given > 0: _save()
 	return given

@@ -92,7 +92,9 @@ func _on_catcher_input(e: InputEvent) -> void:
 	if down != -1: catcher.accept_event()
 
 # ---------------------------------------------------------------- reel gauge
-func show_reel(fish: Dictionary) -> void:
+## at_top: put the gauge high when the fish fights in the lower half of the screen.
+func show_reel(fish: Dictionary, at_top := false) -> void:
+	gauge.at_top = at_top
 	gauge.fish_col = GOLD if fish.get("gold", false) else fish.get("body", TEAL)
 	gauge.progress = 0.0; gauge.tension = 0.0; gauge.t = 0.0
 	gauge.visible = true
@@ -432,6 +434,7 @@ class ReelGauge extends Control:
 	var held := false
 	var fish_col := Color("a9c4d6")
 	var appear := 1.0
+	var at_top := false
 	var t := 0.0
 
 	func _process(dt: float) -> void:
@@ -446,7 +449,7 @@ class ReelGauge extends Control:
 
 	func _draw() -> void:
 		var vs := size
-		var c := Vector2(minf(150.0, vs.x * 0.28), vs.y - 225.0)
+		var c := Vector2(minf(150.0, vs.x * 0.28), 330.0 if at_top else vs.y - 225.0)
 		var k := shown_tension
 		var shake := Vector2.ZERO
 		if k > 0.75 or surging:
