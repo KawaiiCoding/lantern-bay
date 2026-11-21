@@ -27,6 +27,7 @@ var _tab := "cats"
 var _w := 524.0
 var _h := 880.0
 var _title: Label
+var _forecast: Label                 # Wen's tomorrow forecast (perk weather_forecast), under the title
 var _tabs := {}                      # id -> TabButton
 var _tab_row: HBoxContainer
 var _scroll: ScrollContainer
@@ -51,11 +52,18 @@ func _init() -> void:
 	var bi := Style.icon("book", 42.0)
 	bi.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	head.add_child(bi)
+	var tv := VBoxContainer.new()
+	tv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	tv.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	tv.add_theme_constant_override("separation", -4)
+	head.add_child(tv)
 	_title = Style.label("Notebook", 33, Style.INK, true)
-	_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_title.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_title.clip_text = true
-	head.add_child(_title)
+	tv.add_child(_title)
+	_forecast = Style.label("", 19, Style.PRIMARY_DARK, true)
+	_forecast.clip_text = true
+	_forecast.visible = false
+	tv.add_child(_forecast)
 	var gear := Style.icon_button("gear", "cream", 64.0)
 	gear.pressed.connect(func() -> void: show_tab("settings" if _tab != "settings" else "cats"))
 	head.add_child(gear)
@@ -134,6 +142,9 @@ func _refresh() -> void:
 	for id in _tabs:
 		_tabs[id].set_selected(id == _tab)
 	_title.text = "Settings" if _tab == "settings" else "Notebook"
+	var fc := _forecast_text()
+	_forecast.text = fc
+	_forecast.visible = fc != ""
 	for c in _list.get_children():
 		_list.remove_child(c)
 		c.queue_free()
@@ -146,6 +157,12 @@ func _refresh() -> void:
 		"requests": _page_requests()
 		"bag": _page_bag()
 		"settings": _page_settings()
+
+## Wen's perk weather_forecast: from 18:00 the book says what tomorrow brings.
+func _forecast_text() -> String:
+	if not GameState.has_perk("wen", "weather_forecast") or GameState.minute < 18.0 * 60.0: return ""
+	var w := str(GameState.weather_on(GameState.day + 1))
+	return "Tomorrow: " + str({"sunny": "Sunny", "cloudy": "Cloudy", "rain": "Rain", "fog": "Fog"}.get(w, _pretty(w)))
 
 ## Inner width available to cards (panel minus margins, scroll bar).
 func _cw() -> float:
@@ -274,7 +291,8 @@ func _cat_card(id: String, def: Dictionary, card_w: float) -> Control:
 	vb.add_theme_constant_override("separation", 4)
 	card.add_child(vb)
 
-	vb.add_child(_portrait(id, def, met))
+	var painted := friend and met and GameState.has_perk("maple", "cat_portraits")
+	vb.add_child(_portrait(id, def, met, painted))
 	var name_l := Style.label(str(def.get("name", _pretty(id))) if met else "???", 23, Style.INK, true)
 	name_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	name_l.clip_text = true
@@ -291,6 +309,10 @@ func _cat_card(id: String, def: Dictionary, card_w: float) -> Control:
 	sub.add_child(Style.label(str(def.get("personality", "")), 18, Style.INK_SOFT))
 	if friend: sub.add_child(Style.chip("Friend", Style.GOLD, Style.INK, 16))
 	vb.add_child(sub)
+	if painted:
+		var pc := Style.chip("Painted by Maple", Style.GOLD, Style.INK, 15)
+		pc.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		vb.add_child(pc)
 	var hh := Style.hearts(hearts, int(Data.CAT_MAX_HEARTS), 27.0, 2)
 	hh.alignment = BoxContainer.ALIGNMENT_CENTER
 	vb.add_child(hh)
@@ -299,7 +321,7 @@ func _cat_card(id: String, def: Dictionary, card_w: float) -> Control:
 		vb.add_child(_fact_row(line[0], line[1], inner))
 	return card
 
-func _portrait(id: String, def: Dictionary, met: bool) -> Control:
+func _portrait(id: String, def: Dictionary, met: bool, painted := false) -> Control:
 	var holder := Control.new()
 	holder.custom_minimum_size = Vector2(124, 124)
 	holder.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
@@ -325,6 +347,26 @@ func _portrait(id: String, def: Dictionary, met: bool) -> Control:
 	holder.add_child(tr)
 	if _portraits and _portraits.has_method("request"):
 		_portraits.request(id, not met, tr, fallback)
+	if painted:   # Maple's perk cat_portraits: a gold picture frame
+		var fr := Panel.new()
+		fr.set_anchors_preset(Control.PRESET_FULL_RECT)
+		fr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var fb := StyleBoxFlat.new()
+		fb.draw_center = false
+		fb.border_color = Style.GOLD_DARK; fb.set_border_width_all(7)
+		fb.set_corner_radius_all(20); fb.set_corner_detail(8)
+		fr.add_theme_stylebox_override("panel", fb)
+		holder.add_child(fr)
+		var fi := Panel.new()
+		fi.set_anchors_preset(Control.PRESET_FULL_RECT)
+		fi.offset_left = 3; fi.offset_top = 3; fi.offset_right = -3; fi.offset_bottom = -3
+		fi.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var ib := StyleBoxFlat.new()
+		ib.draw_center = false
+		ib.border_color = Style.GOLD; ib.set_border_width_all(4)
+		ib.set_corner_radius_all(17); ib.set_corner_detail(8)
+		fi.add_theme_stylebox_override("panel", ib)
+		holder.add_child(fi)
 	return holder
 
 func _fact_row(icon_name: String, text: String, width: float) -> Control:
@@ -363,13 +405,42 @@ func _cat_fact_lines(id: String, def: Dictionary, st: Dictionary) -> Array:
 			has_secret = true
 		else:
 			out.append(["check", fs])        # free-form note written by a system
-	if not haunts.is_empty(): out.push_front(["check", "Seen: " + ", ".join(haunts) + "."])
+	if GameState.has_perk("maple", "reveal_haunts"):   # Maple's sketches: every haunt of a cat you have met
+		haunts = _all_haunts(def)
+		if not haunts.is_empty(): out.push_front(["check", "Haunts: " + ", ".join(haunts) + "."])
+	elif not haunts.is_empty():
+		out.push_front(["check", "Seen: " + ", ".join(haunts) + "."])
 	if has_fav: out.append(["check", "Favourite: %s." % _item_name(str(def.get("favourite", "")))])
 	elif hint: out.append(["check", "Has a favourite treat."])
 	if has_secret: out.append(["check", str(def.get("secret", ""))])
+	elif GameState.has_perk("maple", "secret_hints"):
+		var hint_text := _secret_hint(str(def.get("secret", "")))
+		if hint_text != "": out.append(["note", hint_text])
 	if not (has_fav and has_secret):
 		out.append(["lock", "More to notice..."])
 	return out
+
+## Every place a cat spends time (morning to night, plus its rainy-day spot), without repeats.
+func _all_haunts(def: Dictionary) -> Array:
+	var out: Array = []
+	var hs: Variant = def.get("haunts", {})
+	if hs is Dictionary:
+		for slot in ["morning", "afternoon", "evening", "night"]:
+			if hs.has(slot) and not (_spot(str(hs[slot])) in out): out.append(_spot(str(hs[slot])))
+	var rs := str(def.get("rain_spot", ""))
+	if rs != "" and not ((_spot(rs) + " in rain") in out): out.append(_spot(rs) + " in rain")
+	return out
+
+## Maple's perk secret_hints: the start of the secret, cut short, as a hint ("Maple thinks: sit beside her in the...").
+func _secret_hint(secret: String) -> String:
+	if secret == "": return ""
+	var t := secret.split(". ", false)[0].trim_suffix(".")
+	for cut in [", ", " and "]:
+		var i := t.find(cut)
+		if i > 8: t = t.substr(0, i)
+	var words := t.split(" ", false)
+	if words.size() > 7: t = " ".join(words.slice(0, 7))
+	return "Maple's hint: " + t.substr(0, 1).to_lower() + t.substr(1) + "..."
 
 func _spot(s: String) -> String:
 	return str(SPOT_NAMES.get(s, _pretty(s).to_lower())) if s != "" else "somewhere"
@@ -431,6 +502,8 @@ func _person_card(id: String, def: Dictionary) -> Control:
 	var chip := Style.chip("Level %d" % lv, Style.GOLD if lv >= 5 else Style.CREAM_SHADE, Style.INK, 17)
 	chip.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	top.add_child(chip)
+	var about := str(def.get("about", ""))
+	if about != "": vb.add_child(_wrap_label(about, 17, Style.INK_SOFT, w))
 	# row 2: hearts (one per level) + progress to the next level
 	var hh := Style.hearts(lv, 10, 23.0, 0)
 	vb.add_child(hh)
@@ -566,10 +639,15 @@ func _fish_row(id: String, def: Dictionary) -> Control:
 		for i in int(def.get("rarity", 1)):
 			stars.add_child(Style.icon("star", 18.0))
 		sub.add_child(stars)
-		sub.add_child(Style.label("Best " + _cm(float(e.get("best_cm", 0.0))), 18, Style.INK_SOFT))
+		var rname := str(Data.RARITY_NAMES.get(int(def.get("rarity", 1)), ""))
+		var best := Style.label(("%s, best " % rname if rname != "" else "Best ") + _cm(float(e.get("best_cm", 0.0))), 17, Style.INK_SOFT)
+		best.clip_text = true
+		best.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		sub.add_child(best)
 		vb.add_child(sub)
 	else:
-		vb.add_child(Style.label("Not caught yet", 18, Style.INK_SOFT))
+		var hint := str(def.get("hint", ""))
+		vb.add_child(_wrap_label(hint if hint != "" else "Not caught yet", 17, Style.INK_SOFT, _cw() - 24.0 - 6.0 - 58.0 - 12.0))
 	var right := VBoxContainer.new()
 	right.alignment = BoxContainer.ALIGNMENT_CENTER
 	right.add_theme_constant_override("separation", 2)

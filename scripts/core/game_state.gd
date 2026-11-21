@@ -124,7 +124,7 @@ func set_paused(p: bool) -> void:
 func add_coins(n: int) -> void:
 	coins = max(0, coins + n); coins_changed.emit(coins)
 func spend(n: int) -> bool:
-	if coins < n: return false
+	if n < 0 or coins < n: return false
 	add_coins(-n); return true
 func add_item(id: String, n := 1) -> void:
 	bag[id] = int(bag.get(id, 0)) + n
@@ -188,7 +188,7 @@ func to_dict() -> Dictionary:
 ## when the app goes to the background or closes. Writes to a temp file, then swaps it in, and keeps
 ## the previous save as a backup, so a crash mid-write never loses progress.
 func save_soon() -> void:
-	_save_timer = 28.0   # saves within ~2 s, batching several events into one write
+	_save_timer = 29.2   # saves within ~1 s, batching several events into one write
 
 func save_game() -> void:
 	var tmp := SAVE_PATH + ".tmp"
@@ -223,8 +223,9 @@ func load_game() -> void:
 	if d == null:
 		_apply_start()   # brand new game
 		return
-	day = int(d.get("day", 1)); minute = float(d.get("minute", DAY_START)); coins = int(d.get("coins", 500))
-	sparks = int(d.get("sparks", 0)); rod_level = clampi(int(d.get("rod_level", 1)), 1, 3)
+	d = _ints(d)
+	day = max(1, _num(d.get("day"), 1)); minute = float(_num(d.get("minute"), DAY_START)); coins = max(0, _num(d.get("coins"), 500))
+	sparks = max(0, _num(d.get("sparks"), 0)); rod_level = clampi(_num(d.get("rod_level"), 1), 1, 3)
 	bag = _dict(d, "bag"); fish_log = _dict(d, "fish_log"); cats = _dict(d, "cats"); shore_log = _dict(d, "shore_log")
 	var rq = d.get("requests", [])
 	requests = rq if typeof(rq) == TYPE_ARRAY else []
@@ -235,6 +236,27 @@ func load_game() -> void:
 		if bag[k] <= 0: bag.erase(k)
 	for k in shore_log.keys(): shore_log[k] = int(shore_log[k])
 	if minute < 0.0 or minute > 1440.0 + DAY_START: minute = DAY_START
+
+## A number from a save value, or the default when missing / null / not a number.
+func _num(v, default):
+	if typeof(v) == TYPE_INT or typeof(v) == TYPE_FLOAT: return int(v) if typeof(default) == TYPE_INT else float(v)
+	return default
+
+## JSON turns every number into a float: turn whole numbers back into ints everywhere (nested too).
+## Fractional values (sizes in cm, the clock) stay floats.
+func _ints(v):
+	match typeof(v):
+		TYPE_FLOAT:
+			return int(v) if is_finite(v) and v == floor(v) and absf(v) < 1e15 else v
+		TYPE_DICTIONARY:
+			var o := {}
+			for k in v: o[k] = _ints(v[k])
+			return o
+		TYPE_ARRAY:
+			var a := []
+			for x in v: a.append(_ints(x))
+			return a
+	return v
 
 func _dict(d: Dictionary, key: String) -> Dictionary:
 	var v = d.get(key, {})

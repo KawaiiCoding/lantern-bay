@@ -7,8 +7,11 @@ extends Node
 ##     3 per day, unfinished ones roll over, finished ones clear each morning, untouched ones are replaced after
 ##     REQUEST_EXPIRE_DAYS. "auto" size requests are handed over the moment a fish is caught (on_catch).
 ##   - Panels open through main.hud.open_panel(c) when the HUD exists, otherwise through our own overlay.
+##   - Fern's basket (town/basket.gd) stands beside the board; People fills it with her gift perks each morning.
+##   - Night market (Data.NIGHT_MARKET_MULT): rare finds sell for more at Pip's 21:00-24:00 once the hill lantern is lit.
 ## People perks used: shop_discount, gold_bonus, sell_bonus, special_bonus, spark_bonus.
 ## Self-test: `-- test=town` (shop with a fake bag), `panel=buy`, `panel=board`, `panel=none`, `pip=1`.
+##   `-- test=basket fresh=1 shot=/tmp/x.png wait=3`: Fern's basket (restock periods, take, save round trip) + night market prices.
 
 const Dat := preload("res://scripts/systems/town/dat.gd")
 const Eco := preload("res://scripts/systems/town/economy.gd")
@@ -16,6 +19,7 @@ const Requests := preload("res://scripts/systems/town/requests.gd")
 const Stage := preload("res://scripts/systems/town/stage.gd")
 const PipScript := preload("res://scripts/systems/town/pip.gd")
 const BoardScript := preload("res://scripts/systems/town/board.gd")
+const BasketScript := preload("res://scripts/systems/town/basket.gd")
 const SpotScript := preload("res://scripts/systems/town/spot.gd")
 const ShopPanel := preload("res://scripts/ui/shop_panel.gd")
 const BoardPanel := preload("res://scripts/systems/town/board_panel.gd")
@@ -106,6 +110,12 @@ func _build_world() -> void:
 	_root.add_child(bs)
 	board_spot = bs
 
+	var east := Vector3.UP.cross(bdir).normalized()   # to the right of the board as you face it (the shop is on the other side)
+	var basket := BasketScript.new()
+	basket.name = "FernBasket"
+	basket.position = _place(bpos + bdir * 0.2 + east * 1.7)
+	_root.add_child(basket)
+
 ## Pip's body normally comes from the People system. Without it (or with pip=1 in a test) we build a small one.
 func _maybe_build_pip() -> void:
 	var forced := str(Stage.args().get("pip", "")) == "1"
@@ -139,6 +149,8 @@ func _boot() -> void:
 	var a := Stage.args()
 	if str(a.get("test", "")) in ["town", "shop", "board"]:
 		_run_test(a)
+	elif str(a.get("test", "")) == "basket":
+		_run_basket_test(a)
 
 ## True while Pip stands at the counter (06:00-21:00). At night the shop still works: you ring the bell.
 func is_open() -> bool:
@@ -234,6 +246,9 @@ func panel_open() -> bool:
 func open_shop(tab := "sell") -> void:
 	if panel_open(): return
 	_refresh_mods()
+	if Eco.night_market_open() and int(GameState.flags.get("night_market_day", 0)) != GameState.day:
+		GameState.flags["night_market_day"] = GameState.day
+		GameState.say("Night market: rare finds pay x%s tonight." % str(snappedf(Eco.night_mult(), 0.01)))
 	var p := ShopPanel.new(tab)
 	p.night = not is_open()
 	p.closed.connect(close_panel)
@@ -483,6 +498,88 @@ func _run_logic_checks() -> void:
 	GameState.rod_level = 1
 	GameState.cosmetics = {}
 	GameState.lanterns = {}
+
+func _run_basket_test(a: Dictionary) -> void:
+	await get_tree().process_frame
+	await get_tree().process_frame
+	if not a.has("fresh"): print("[town test] note: pass fresh=1 so the test does not touch your real save")
+	GameState._save_timer = -1.0e9          # never write the fake state to the save file
+	var pe := Stage.system(main, "people")
+	_check("the People system is there", pe != null and pe.has_method("_morning"))
+	if pe == null: return
+	GameState.bag = {}
+	GameState.flags.erase("basket")
+	GameState.day = 10
+	var fern := GameState.person_state("fern")
+	fern["perks"] = []
+	fern["points"] = 0
+	var bk: Node3D = null
+	for c in _root.get_children():
+		if c.name == "FernBasket": bk = c
+	_check("the basket stands next to the board", bk != null and bk.global_position.distance_to(Stage.spot(main, "board")) < 3.5)
+	pe.set("_tick", 0.0)
+	GameState.flags.erase("people_morning_day"); pe._morning(false)
+	_check("no gift perk, nothing in the basket", BasketScript.items().is_empty() and not BasketScript.unlocked())
+	# Fern level 10 with all three gift perks
+	fern["points"] = 1300
+	fern["perks"] = ["daily_flower", "catnip_gift", "moonflower"]
+	GameState.flags.erase("people_morning_day"); pe._morning(false)
+	_check("first morning stocks a flower, catnip and a moonflower", BasketScript.items() == ["flower:sea_pink", "treat:catnip", "flower:moonflower"])
+	GameState.flags.erase("people_morning_day"); pe._morning(false)
+	_check("the same day never restocks twice", BasketScript.items().size() == 3 and not GameState.has_item("flower:sea_pink"))
+	await get_tree().create_timer(0.7).timeout
+	_check("interactable prompt lists the basket", bk != null and bk.get_prompt(null) == "Take from basket" and bk.is_in_group("interactable"))
+	# the saved state survives JSON (numbers come back as floats)
+	var back: Variant = JSON.parse_string(JSON.stringify(GameState.flags))
+	GameState.flags = GameState._ints(back)
+	GameState.flags.erase("people_morning_day"); pe._morning(false)
+	_check("after a save round trip the stock is intact and not doubled", BasketScript.items().size() == 3 and not BasketScript.put_if_due("daily_flower", 1))
+	bk.interact(null)
+	_check("taking moves everything into the bag", GameState.has_item("flower:sea_pink") and GameState.has_item("treat:catnip") and GameState.has_item("flower:moonflower") and BasketScript.items().is_empty())
+	_check("an empty basket offers nothing", bk.get_prompt(null) == "")
+	var got: Array = []
+	for d in range(11, 19):
+		GameState.day = d
+		GameState.flags.erase("people_morning_day"); pe._morning(false)
+		got.append(BasketScript.items().duplicate())
+		BasketScript.take_all()
+	var flowers := 0
+	var catnip := 0
+	var moons := 0
+	for g in got:
+		if "flower:sea_pink" in g: flowers += 1
+		if "treat:catnip" in g: catnip += 1
+		if "flower:moonflower" in g: moons += 1
+	_check("days 11-18: a flower daily (%d), catnip every 3 days (%d), a moonflower every 7 (%d)" % [flowers, catnip, moons], flowers == 8 and catnip == 2 and moons == 1)
+	GameState.day = 20
+	GameState.flags.erase("people_morning_day"); pe._morning(false)
+	var tm := GameState.minute
+	GameState.lanterns = {}
+	GameState.minute = 22.0 * 60.0
+	var plain := Eco.unit_price("fish:tuna")
+	GameState.lanterns = {"harbour": true, "hill": true}
+	var night := Eco.unit_price("fish:tuna")
+	GameState.minute = 12.0 * 60.0
+	var day_price := Eco.unit_price("fish:tuna")
+	_check("night market: x%s at 22:00 with the hill lantern for rare fish only (%d vs %d)" % [str(Eco.night_mult()), night, day_price],
+		night == int(round(day_price * Eco.night_mult())) and plain == day_price and Eco.unit_price("fish:sardine") == int(Dat.entry("FISH", "sardine").get("price", 0)))
+	GameState.minute = 22.0 * 60.0
+	_check("night market: sardines pay the normal price", Eco.unit_price("fish:sardine") == int(Dat.entry("FISH", "sardine").get("price", 0)))
+	GameState.minute = tm
+	GameState.lanterns = {}
+	# screenshot: a stocked basket by the board
+	GameState.day = 30
+	GameState.flags.erase("basket")
+	GameState.flags.erase("people_morning_day"); pe._morning(false)
+	await get_tree().create_timer(0.7).timeout
+	if bk != null:
+		var cam := Camera3D.new()
+		cam.fov = 40
+		main.add_child(cam)
+		var at := bk.global_position
+		cam.look_at_from_position(at + Vector3(2.0, 4.5, 6.5), at + Vector3(-0.5, 0.5, 0.0))
+		cam.current = true
+	print("[town test] done, failures: %d" % _checks_failed)
 
 func _give_for(req: Dictionary) -> void:
 	match str(req.get("kind", "")):

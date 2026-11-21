@@ -44,6 +44,7 @@ var fade := 0.0
 var fade_goal := 1.0
 var yaw := 0.0
 var following := false
+var buddy_t := 0.0                # fishing buddy: seconds spent beside Mocha while he fishes
 var near_sit_time := 0.0          # seconds within reach while the player sits (Cats system)
 var sit_credited := false
 var gone := false                 # leaving or removed: not interactable any more
@@ -83,6 +84,7 @@ var _return_pending := false
 var _follow_move_t := 0.0
 var _blink := 0.0
 var _blink_in := 3.0
+var _digging := false
 var _fade_dest := Vector3.INF
 var _scare_from := Vector3.ZERO
 var _free_on_fade := false
@@ -247,6 +249,10 @@ func interact(player) -> void:
 func available() -> bool:
 	return not gone and fade >= 0.7 and not (state in [S.FLEE, S.REACT, S.ALERT, S.LEAVE])
 
+## Curl up beside Mocha right now (Tofu's afternoon nap).
+func nap_now() -> void:
+	if not gone: _enter(S.NAP, 25.0)
+
 func is_napping() -> bool:
 	return state == S.NAP
 
@@ -351,6 +357,7 @@ func come_close(player_pos: Vector3, dist := 1.15) -> void:
 
 func scare_from(from: Vector3) -> void:
 	if gone or state in [S.REACT, S.FLEE, S.ALERT]: return
+	_digging = false
 	_enter(S.REACT, 0.38)
 	_vy = 3.4
 	_scare_from = from
@@ -438,14 +445,26 @@ func _tick_ai(dt: float) -> void:
 			if state_t >= state_len:
 				_scare_cd = 2.5
 				_return_pending = true
-				_return_timer = _rng.randf_range(5.0, 9.0)
+				_return_timer = float(sys.dc("CAT_RETURN_SECONDS", 20.0))
 				_enter(S.IDLE, _rng.randf_range(1.5, 3.0))
 		S.SNIFF:
 			if state_t >= state_len:
 				_p_sniff = 0.0
-				_walk_off()
+				if _digging:
+					_digging = false
+					sys.cat_dig(self)
+					joy_hop(2)
+					_follow_move_t = 0.0
+					_return_pending = true
+					_return_timer = 1.0
+				else:
+					_walk_off()
 
 func _after_travel() -> void:
+	if _digging:
+		_enter(S.SNIFF, 1.8)
+		_p_sniff = 1.0
+		return
 	if _approach_mode:
 		_approach_mode = false
 		_enter(S.SIT, _rng.randf_range(5.0, 9.0))
@@ -569,7 +588,8 @@ func _start_flee() -> void:
 	var away := Vector3(global_position.x - from.x, 0, global_position.z - from.z)
 	if away.length() < 0.05: away = Vector3(_rng.randf_range(-1, 1), 0, _rng.randf_range(-1, 1))
 	away = away.normalized()
-	for dist in [6.0, 4.5, 3.0]:
+	var flee_d := float(sys.dc("CAT_FLEE_DIST", 6.0))
+	for dist in [flee_d, flee_d * 0.75, flee_d * 0.5]:
 		for ang in [0.0, 0.6, -0.6, 1.2, -1.2, 1.9, -1.9, 2.6, -2.6]:
 			var p: Vector3 = global_position + away.rotated(Vector3.UP, ang) * dist
 			p.y = _gy(p.x, p.z, global_position.y)
@@ -632,17 +652,27 @@ func _slow_tick() -> void:
 		var n := _player_noise(p)
 		var friend := bool(sys.st(cat_id).get("friend", false))
 		var hit := false
-		if friend: hit = (n >= 1.2 and pd < 2.5)
-		else: hit = (n >= 1.2 and pd < 4.0) or (n >= 0.9 and pd < 2.0)
+		var calm: float = sys.calm_factor()   # Maple perk "cat_calm"
+		var ride_r := float(sys.dc("CAT_SCARE_RIDE_RADIUS", 4.0)) * calm
+		var run_r := float(sys.dc("CAT_SCARE_RUN_RADIUS", 2.0)) * calm
+		if friend: hit = (n >= 1.2 and pd < ride_r * 0.6)
+		else: hit = (n >= 1.2 and pd < ride_r) or (n >= 0.9 and pd < run_r)
 		if hit:
 			scare_from((p as Node3D).global_position)
 			return
 	# follow (the Biscuit secret): carrying the item makes this cat trail the player
-	if follow_item != "" and not (state in [S.REACT, S.FLEE, S.ALERT, S.LEAVE]):
+	if follow_item != "" and not _digging and not (state in [S.REACT, S.FLEE, S.ALERT, S.LEAVE]):
 		if GameState.has_item(follow_item):
 			if following:
 				_follow_move_t += 0.2
 				if _follow_move_t >= 2.5 and pd < 2.5: sys.learn(cat_id, "secret", true)
+				# data secret_spot: after a while the cat leads Mocha to a spot and digs up something (once a day)
+				if _follow_move_t >= 6.0 and not _digging and state == S.FOLLOW and sys.dig_available(cat_id):
+					var dp: Vector3 = sys.dig_point(String(cdata.get("secret_spot", "")))
+					if dp != Vector3.INF:
+						_digging = true
+						following = false
+						_travel(dp, 2.4, false)
 			if not following and pd <= FOLLOW_NOTICE:
 				following = true
 				_follow_move_t = 0.0

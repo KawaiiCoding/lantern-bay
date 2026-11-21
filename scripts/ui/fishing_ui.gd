@@ -225,6 +225,11 @@ func show_card(info: Dictionary) -> void:
 	var stars := Stars.new(); stars.count = int(info.get("rarity", 1)); stars.custom_minimum_size = Vector2(0, 46)
 	stars.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	vb.add_child(stars)
+	var rname := str(Data.RARITY_NAMES.get(int(info.get("rarity", 1)), ""))
+	if rname != "" and not info.get("junk", false):
+		var rl := _label(rname, 20, Color("b8862a") if int(info.get("rarity", 1)) >= 3 else Color(INK, 0.75))
+		rl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		vb.add_child(rl)
 
 	var sp_n := int(info.get("sparks", 0))
 	if sp_n > 0:

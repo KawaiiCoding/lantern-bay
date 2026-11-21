@@ -27,7 +27,10 @@ func setup(m: Node) -> void:
 	main = m
 	_layer = CanvasLayer.new(); _layer.layer = 9; add_child(_layer)
 	_chip = PanelContainer.new()
-	_chip.add_theme_stylebox_override("panel", Style.panel_box(Style.CREAM, 18, 3, 12))
+	# looks like a small paper task tag (mustard, dashed feel), never like a speech bubble or toast
+	var sb := Style.panel_box(Color("f7e2a6"), 10, 2, 10, false)
+	sb.border_color = Style.GOLD_DARK
+	_chip.add_theme_stylebox_override("panel", sb)
 	_chip.position = Vector2(14, 160)
 	_chip.mouse_filter = Control.MOUSE_FILTER_STOP
 	_chip.gui_input.connect(_on_chip_input)
@@ -35,9 +38,14 @@ func setup(m: Node) -> void:
 	var hb := HBoxContainer.new(); hb.add_theme_constant_override("separation", 8)
 	hb.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_chip.add_child(hb)
-	var dot := Style.icon("star", 22.0, Style.GOLD_DARK); dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	hb.add_child(dot)
-	_label = Style.label("", 19, Style.INK, true)
+	var tag := Style.label("GOAL", 13, Color("fffaf2"), true)
+	var tsb := StyleBoxFlat.new(); tsb.bg_color = Style.GOLD_DARK; tsb.set_corner_radius_all(6)
+	tsb.content_margin_left = 6; tsb.content_margin_right = 6; tsb.content_margin_top = 1; tsb.content_margin_bottom = 1
+	tag.add_theme_stylebox_override("normal", tsb)
+	tag.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	tag.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hb.add_child(tag)
+	_label = Style.label("", 17, Style.INK, false)
 	_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_label.autowrap_mode = TextServer.AUTOWRAP_OFF
 	hb.add_child(_label)

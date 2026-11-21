@@ -27,8 +27,10 @@ func _ready() -> void:
 			var s = load(TRACKS[k])
 			if s is AudioStreamMP3: s.loop = true
 			_streams[k] = s
-	GameState.time_changed.connect(func(_d, _m): _pick())
+	GameState.time_changed.connect(_on_time)
 	_pick()
+
+func _on_time(_d: int, _m: float) -> void: _pick()
 
 func enabled() -> bool: return bool(GameState.flags.get("music_on", true))
 func volume() -> float: return clampf(float(GameState.flags.get("music_volume", 0.7)), 0.0, 1.0)

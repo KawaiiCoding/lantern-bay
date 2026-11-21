@@ -26,7 +26,7 @@ const LANDING_TIME := 0.7
 ## Relaxed tuning (owner): generous bite windows, few fake-outs, calm fights.
 const RELAX_WINDOW_BONUS := 0.3     # added to Data.ROD bite_window (Lv1 0.7 -> 1.0, Lv2 1.15, Lv3 1.2)
 const MAX_NIBBLES := 2
-const REEL_HOLD := Vector2(2.4, 4.4) # seconds of holding for small .. big fish (fights ~3-6 s with easing)
+const REEL_HOLD_SHARE := 0.5        # share of a Data.REEL_SECONDS fight spent holding the button (the rest is easing off for surges)
 const SURGE_WARN := 0.45            # telegraph before each surge
 const SNAP_AFTER := 1.4             # seconds held at 100% tension before the line goes
 const SOFT_RED := Color("c4504a")
@@ -148,13 +148,13 @@ func _make_spot(n: String) -> void:
 # ---------------------------------------------------------------- contract helpers for spots
 func is_active() -> bool: return state != S.IDLE
 
-## Rocks need the harbour lantern (Data.SPOT_LANTERN); flats fishing needs low tide + perk moss:secret_spot.
+## Rocks need the harbour lantern (Data.SPOT_LANTERN); flats fishing needs low tide + Moss's secret_spot perk (the sandbar).
 func spot_unlocked(id: String) -> bool:
 	var need := str(FishRoll.table("SPOT_LANTERN").get(id, "harbour" if id == "rocks" else ""))
 	if need != "" and not GameState.lanterns.has(need): return false
 	if id == "flats":
 		if not (GameState.has_method("low_tide") and GameState.low_tide()): return false
-		if not FishRoll.has_perk("moss:secret_spot"): return false
+		if not GameState.has_perk("moss", "secret_spot"): return false
 	return true
 func can_start() -> bool: return state == S.IDLE and _cool <= 0.0
 
@@ -441,9 +441,10 @@ func _start_reel() -> void:
 	_strength = (0.45 + 0.55 * clampf(cm / 120.0, 0.0, 1.2) + 0.1 * (rar - 1)) * float(rod.surge)
 	# most fights 3-6 s (owner); bigger fish take longer. Part of each fight is spent easing off.
 	var frac := clampf(0.5 * float(_fish.get("size_t", 0.5)) + 0.5 * clampf(cm / 120.0, 0.0, 1.0), 0.0, 1.0)
-	_hold_time = lerpf(REEL_HOLD.x, REEL_HOLD.y, frac) + 0.25 * (rar - 1)
+	var secs := FishRoll.pair("REEL_SECONDS", Vector2(4.0, 9.0))   # Data: total fight length, small .. big fish
+	_hold_time = lerpf(secs.x, secs.y, frac) * REEL_HOLD_SHARE + 0.25 * (rar - 1)
 	if _fish.get("junk", false):
-		_strength = 0.25; _hold_time = REEL_HOLD.x
+		_strength = 0.25; _hold_time = secs.x * REEL_HOLD_SHARE
 	if not _test.is_empty(): _hold_time *= 4.0 if _test.get("result", "") == "snap" else 0.6
 	_prog = 0.06
 	_tension = 0.1

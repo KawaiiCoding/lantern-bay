@@ -5,6 +5,7 @@ extends CharacterBody3D
 ## Self-test: `godot --path . -- test=player [demo=walk|ride|sit] shot=/tmp/x.png wait=3`
 
 const ShibaArt := preload("res://scripts/player/shiba.gd")
+const FOOT_LIFT := 0.05
 const WALK_SPEED := 4.2
 const SNEAK_SPEED := 1.6
 const SNEAK_STICK := 0.46          # stick length at or below this = sneak (keyboard Shift gives 0.45)
@@ -16,6 +17,9 @@ const RIDE_ACCEL := 11.0
 const RIDE_DECEL := 9.0
 const TURN_SPEED := 11.0
 const LOOK_RADIUS := 5.0           # head turns toward interactables this close
+const ARM_PIVOT := 0.16            # shoulder: local +Y along the arm capsule (height 0.5)
+const ARM_SWING := 0.5             # radians at full walk speed (sneak ~0.2)
+const ARM_RELAX := 0.22            # arms drop a little from the held-forward pose while walking
 
 const CAM_PITCH := 42.0
 const CAM_DIST := 11.0
@@ -104,6 +108,7 @@ func _ready() -> void:
 	_squash = Node3D.new(); _tilt.add_child(_squash)
 
 	_bear_walk = ShibaArt.build(_squash, false)
+	_bear_walk.position.y = FOOT_LIFT   # soles rest on the ground (QA: was 7 cm sunk)
 	_bear_sit = ShibaArt.build(_squash, true)
 	_bear_sit.visible = false
 	_scan_bear(_bear_walk, true)
@@ -141,7 +146,10 @@ func _scan_bear(b: Node3D, _with_limbs := true) -> void:
 		var part := str(c.get_meta("part", ""))
 		match part:
 			"leg": _legs.append(c); c.set_meta("base", c.position)
-			"arm": _arms.append(c); c.set_meta("base", c.rotation)
+			"arm":
+				# swing from the shoulder (top end of the capsule), not around the arm's middle
+				_arms.append(c); c.set_meta("base_xf", c.transform)
+				c.set_meta("pivot", c.transform * Vector3(0, ARM_PIVOT, 0))
 			"front": _fronts.append(c); c.set_meta("base", c.position); c.set_meta("base_rot", c.rotation)
 			"scarf": _scarves.append(c); c.set_meta("base", c.rotation)
 			"head": _heads.append(c)
@@ -549,10 +557,7 @@ func _process(dt: float) -> void:
 		var base: Vector3 = leg.get_meta("base")
 		var s := float(leg.get_meta("swing", signf(base.x)))
 		leg.position = base + Vector3(0, maxf(0.0, -sw * s) * 0.07 * _move_amt, sw * s * 0.14 * _move_amt)
-	for arm in _arms:
-		var rb: Vector3 = arm.get_meta("base")
-		var s2 := signf(arm.position.x)
-		arm.rotation = rb + Vector3(-sw * s2 * 0.45 * _move_amt, 0, 0)
+	_animate_arms(sw)
 
 	# tail: wags when happy (just interacted / something friendly close), sways while walking
 	var want_wag := 0.0
@@ -627,6 +632,23 @@ func _process(dt: float) -> void:
 		var before := _demo_t
 		_demo_t += dt
 		if _demo == "full": _full_checks(before, _demo_t)
+
+## Arms swing opposite to the legs, from the shoulder, scaled by speed (small when sneaking).
+## Going back they roll slightly outward so the paws clear the round belly; idle = gentle breathing sway.
+func _animate_arms(sw: float) -> void:
+	var amt := _move_amt
+	var idle := (1.0 - amt) * sin(_t * 2.3 + 0.4) * 0.035
+	for arm in _arms:
+		if not is_instance_valid(arm): continue
+		var bx: Transform3D = arm.get_meta("base_xf")
+		var pv: Vector3 = arm.get_meta("pivot")
+		var s := signf(bx.origin.x)
+		# leg on side s is forward when sw * s > 0 -> this arm goes back (positive x rotation = paw down/back)
+		var swing := sw * s * ARM_SWING * amt
+		var pitch := ARM_RELAX * amt + swing + idle
+		var roll := (maxf(0.0, swing) * 0.32 + 0.05 * amt) * s
+		var r := Basis(Vector3.BACK, roll) * Basis(Vector3.RIGHT, pitch)
+		arm.transform = Transform3D(r * bx.basis, pv + r * (bx.origin - pv))
 
 func _place_camera(dt: float, snap: bool) -> void:
 	var hv := Vector3(velocity.x, 0, velocity.z)

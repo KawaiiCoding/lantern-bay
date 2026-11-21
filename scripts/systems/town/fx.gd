@@ -61,9 +61,10 @@ static func burst(parent: Node, pos: Vector3, color: Color, amount := 14, speed 
 	p.position = pos
 	parent.add_child(p)
 	p.emitting = true
-	if p.is_inside_tree():
-		p.get_tree().create_timer(life + 0.4).timeout.connect(func() -> void:
-			if is_instance_valid(p): p.queue_free())
+	# a child timer dies with the particles, so nothing can call into a freed node
+	var t := Timer.new(); t.one_shot = true; t.wait_time = life + 0.4; t.autostart = true
+	t.timeout.connect(p.queue_free)
+	p.add_child(t)
 	return p
 
 ## A thin light ring that grows and fades on the ground.

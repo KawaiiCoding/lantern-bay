@@ -28,6 +28,8 @@ const ACTION_D := 136.0
 const RIDE_D := 96.0
 const BOOK_D := 92.0
 const TOAST_SECONDS := 2.2
+const TIDE_STARTS := [6.0, 18.0]     # low tide windows, mirror GameState.low_tide() (06:00-09:00, 18:00-21:00)
+const TIDE_HOURS := 3.0
 
 var main: Node
 var _inset := Vector4.ZERO           # safe-area insets: left, top, right, bottom (canvas units)
@@ -45,6 +47,7 @@ var _controls_on := true
 # top bar widgets
 var _place_lbl: Label
 var _day_lbl: Label
+var _tide_lbl: Label
 var _time_lbl: Label
 var _weather_lbl: Label
 var _weather_icon
@@ -89,8 +92,8 @@ func _ready() -> void:
 	GameState.coins_changed.connect(_on_coins)
 	GameState.sparks_changed.connect(_on_sparks)
 	GameState.toast.connect(_on_toast)
-	InputBridge.action_pressed.connect(func() -> void: _btn_action.held = true)
-	InputBridge.action_released.connect(func() -> void: _btn_action.held = false)
+	InputBridge.action_pressed.connect(_on_action_down)    # bound methods: auto-disconnect when the HUD is freed
+	InputBridge.action_released.connect(_on_action_up)
 	InputBridge.ride_pressed.connect(_on_ride_signal)
 	InputBridge.notebook_pressed.connect(_on_notebook_signal)
 	set_action("")
@@ -191,7 +194,7 @@ func close_panel() -> void:
 		_modal.visible = false
 		panel_closed.emit(null)
 
-func _finish_close(c: Control) -> void:
+func _finish_close(c) -> void:   # untyped: the panel may already be freed by its owner
 	if is_instance_valid(c):
 		if c.get_parent() == _center: _center.remove_child(c)
 		if bool(c.get_meta("autofree", false)): c.queue_free()
@@ -259,8 +262,16 @@ func _build_top() -> void:
 	_place_lbl.clip_text = true
 	_place_lbl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	vb.add_child(_place_lbl)
+	var day_row := HBoxContainer.new()
+	day_row.add_theme_constant_override("separation", 10)
+	day_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vb.add_child(day_row)
 	_day_lbl = Style.label("Day 1", 19, Style.INK_SOFT)
-	vb.add_child(_day_lbl)
+	day_row.add_child(_day_lbl)
+	_tide_lbl = Style.label("", 17, Style.PRIMARY_DARK, true)   # Wen's tide chart (perk tide_chart)
+	_tide_lbl.clip_text = true
+	_tide_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	day_row.add_child(_tide_lbl)
 	_weather_icon = Style.icon("sun", 46.0)
 	_weather_icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	hb.add_child(_weather_icon)
@@ -454,8 +465,9 @@ func _release_inputs() -> void:
 func _on_ride_signal() -> void:
 	if _btn_ride.held: return          # came from our own touch
 	_btn_ride.held = true              # keyboard: a quick visual press
-	get_tree().create_timer(0.12).timeout.connect(func() -> void:
-		if is_instance_valid(_btn_ride) and not _fingers.values().has(_btn_ride): _btn_ride.held = false)
+	var t := Timer.new(); t.one_shot = true; t.wait_time = 0.12; t.autostart = true
+	t.timeout.connect(_release_ride_visual.bind(t))
+	add_child(t)
 
 func _on_notebook_signal() -> void:
 	if is_panel_open():
@@ -481,11 +493,22 @@ func _on_time(day: int, _minute: float) -> void:
 	if clock != _clock_shown:
 		_clock_shown = clock
 		_time_lbl.text = clock
+		_tide_lbl.text = _tide_text()
 		_update_weather_icon()
 	if day != _day_shown:
 		_day_shown = day
 		_day_lbl.text = "Day %d" % day
 		_update_weather_icon()
+
+## Wen's perk tide_chart: the clock area names the low tide.
+func _tide_text() -> String:
+	if not GameState.has_perk("wen", "tide_chart"): return ""
+	var h := GameState.hour()
+	for st in TIDE_STARTS:
+		if h >= st and h < st + TIDE_HOURS: return "Low tide until %02d:00" % int(st + TIDE_HOURS)
+	for st in TIDE_STARTS:
+		if h < st: return "Low tide %02d:00" % int(st)
+	return "Low tide %02d:00" % int(TIDE_STARTS[0])
 
 func _update_weather_icon() -> void:
 	var w := GameState.weather()
@@ -661,7 +684,8 @@ func _test_fake_state() -> void:
 	]
 	GameState.bag = {"fish:sardine": 3, "fish:mackerel": 1, "shore:shell_white": 4, "shore:glass_green": 2, "treat:cream": 1, "treat:tuna_bites": 2}
 	GameState.people = {"pip": {"points": 140, "last_talk_day": 3, "last_gift_day": 2, "seen_lines": [], "perks": [], "events": []},
-		"maple": {"points": 40, "last_talk_day": 3, "last_gift_day": 0, "seen_lines": [], "perks": [], "events": []}}
+		"maple": {"points": 1100, "last_talk_day": 3, "last_gift_day": 0, "seen_lines": [], "perks": ["reveal_haunts", "cat_portraits", "secret_hints"], "events": []},
+		"wen": {"points": 520, "last_talk_day": 2, "last_gift_day": 0, "seen_lines": [], "perks": ["weather_forecast", "tide_chart"], "events": []}}
 	GameState.catalog_changed.emit()
 	GameState.bag_changed.emit()
 	GameState.people_changed.emit()
@@ -912,5 +936,38 @@ func _run_loop_test() -> void:
 	set_place("Plaza"); _check(_place_lbl.text == "Plaza", "top bar: place name")
 	_check(Style.money(1250) == "¥1,250" and Style.money(0) == "¥0" and Style.money(1234567) == "¥1,234,567" and Style.money(-4500) == "-¥4,500", "Style.money formats thousands")
 
+	# Wen's perks: the tide line only says "until" during GameState.low_tide(); the notebook forecast starts at 18:00
+	var wen: Dictionary = GameState.person_state("wen")
+	var wen_perks: Variant = wen.get("perks", [])
+	var clock_before := GameState.minute
+	wen["perks"] = ["weather_forecast", "tide_chart"]
+	var tide_ok := true
+	for m in range(6 * 60, 30 * 60, 30):
+		GameState.minute = float(m)
+		if _tide_text().begins_with("Low tide until") != GameState.low_tide(): tide_ok = false
+	GameState.minute = 17.0 * 60.0
+	_check(tide_ok and _tide_text() == "Low tide 18:00", "tide chart: names the next low tide, 'until' only while it is low (%s)" % _tide_text())
+	var book := Notebook.new()
+	GameState.minute = 12.0 * 60.0
+	var before_six := book._forecast_text()
+	GameState.minute = 19.0 * 60.0
+	_check(before_six == "" and book._forecast_text().begins_with("Tomorrow: "), "forecast: Notebook shows tomorrow's weather only from 18:00 (%s)" % book._forecast_text())
+	book.free()
+	wen["perks"] = []
+	GameState.minute = 19.0 * 60.0
+	_check(_tide_text() == "", "tide chart: nothing without the perk")
+	wen["perks"] = wen_perks
+	GameState.minute = clock_before
+
 	print("UILOOP %d ok, %d failed" % [_t_pass, _t_fail])
 	get_tree().quit(1 if _t_fail > 0 else 0)
+
+
+func _on_action_down() -> void:
+	if is_instance_valid(_btn_action): _btn_action.held = true
+func _on_action_up() -> void:
+	if is_instance_valid(_btn_action): _btn_action.held = false
+
+func _release_ride_visual(t: Timer) -> void:
+	if is_instance_valid(t): t.queue_free()
+	if is_instance_valid(_btn_ride) and not _fingers.values().has(_btn_ride): _btn_ride.held = false

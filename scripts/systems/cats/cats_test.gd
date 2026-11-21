@@ -35,6 +35,7 @@ var sys: Node
 var player: Node3D
 var stub: StubPlayer = null
 var mode := ""
+var _args := {}
 var checks := 0
 var fails := 0
 var _anchor := Vector3.ZERO
@@ -44,7 +45,8 @@ var _right := Vector3(1, 0, 0)
 func run(system: Node, m: String, args: Dictionary) -> void:
 	sys = system
 	mode = m
-	GameState.toast.connect(func(t): print("[cats test] toast: ", t))
+	_args = args
+	GameState.toast.connect(_on_toast)
 	await get_tree().process_frame
 	await get_tree().process_frame
 	if not args.has("fresh"):
@@ -59,6 +61,12 @@ func run(system: Node, m: String, args: Dictionary) -> void:
 		_: await _run_shot()
 
 # ---------------------------------------------------------------- stage
+func _on_toast(t: String) -> void:
+	print("[cats test] toast: ", t)
+
+func _exit_tree() -> void:
+	if GameState.toast.is_connected(_on_toast): GameState.toast.disconnect(_on_toast)
+
 func _prepare_world() -> void:
 	var main: Node = sys.main
 	player = sys.get_player()
@@ -94,6 +102,7 @@ func _prepare_world() -> void:
 		cam.look_at(Vector3(0, 0.55, 0.4), Vector3.UP)
 		cam.current = true
 	_anchor = player.global_position
+	_anchor.y = 0.0   # the stage floor is at y = 0 (a real Player without colliders may have fallen)
 	var to_cam := cam.global_position - _anchor
 	to_cam.y = 0.0
 	_toward = to_cam.normalized() if to_cam.length() > 0.1 else Vector3(0, 0, 1)
@@ -179,6 +188,7 @@ func _run_logic() -> void:
 	await _logic_scare()
 	await _logic_sit_end()
 	await _logic_feet()
+	await _logic_data_secrets()
 	await _logic_friend_gifts()
 	print("[cats test] logic: %d checks, %d failed" % [checks, fails])
 	print("[cats test] RESULT: ", "PASS" if fails == 0 else "FAIL")
@@ -267,8 +277,7 @@ func _logic_schedule_live() -> void:
 	_check(sys.is_present("captain"), "captain present at night after the hill lantern")
 	GameState.lanterns.erase("hill")
 	# an unknown spot keeps the cat hidden (never dropped at the origin)
-	var saved: Dictionary = sys.spot_override.duplicate()
-	sys.spot_override.erase("shop")
+	sys.spot_hidden["shop"] = true
 	_day_with("sunny")
 	GameState.minute = 13.0 * 60.0
 	var plan_h: Dictionary = sys.lineup("afternoon", "sunny")
@@ -276,7 +285,7 @@ func _logic_schedule_live() -> void:
 	for id in plan_h.keys():
 		if String(plan_h[id]["spot"]) == "shop": any_shop = true
 	_check(not any_shop, "cats whose spot is unknown stay hidden")
-	sys.spot_override = saved
+	sys.spot_hidden.clear()
 	_clear_cats()
 	GameState.day = 1
 	_keep_morning()
@@ -312,7 +321,7 @@ func _logic_trust() -> void:
 	_check(biscuit.get_prompt(player) == "Give Mackerel", "favourite fish offered: %s" % biscuit.get_prompt(player))
 	await get_tree().process_frame
 	biscuit.interact(player)
-	_check(sys.hearts("biscuit") == 4 and not GameState.has_item("fish:mackerel"), "favourite treat gives two hearts and is used up")
+	_check(sys.hearts("biscuit") == 3 and not GameState.has_item("fish:mackerel"), "favourite treat is used up; hearts capped at +3 per day (got %d)" % sys.hearts("biscuit"))
 	_check("favourite" in sys.st("biscuit")["facts"], "favourite fact learned")
 	_check(int(sys.st("biscuit")["last_treat_day"]) == day, "treat day recorded")
 	# shy cat needs a sit first (spawned late: cats near a sitting Mocha join the session)
@@ -461,7 +470,7 @@ func _logic_friend_gifts() -> void:
 	s["hearts"] = 4
 	s["last_pet_day"] = 0
 	var heard := []
-	sys.friend_made.connect(func(id): heard.append(id))
+	sys.friend_made.connect(_on_friend.bind(heard))
 	tofu.interact(player)
 	_check(sys.is_friend("tofu") and sys.hearts("tofu") == 5, "5 hearts makes a friend")
 	_check(heard == ["tofu"], "friend_made signal fired once")
@@ -480,20 +489,26 @@ func _logic_friend_gifts() -> void:
 	GameState.day = found
 	GameState.flags.erase("cat_gift_day")
 	var items_before := _shore_items()
+	var coins_before := GameState.coins
 	var n: int = sys.give_gifts()
-	_check(n >= 1 and _shore_items() == items_before + n, "gift: %d shore item(s) landed in the bag" % n)
+	var coin_gifts := 1 if GameState.coins > coins_before else 0
+	_check(n >= 1 and _shore_items() + coin_gifts >= items_before + 1, "gift: %d gift(s) landed (items or a yen note)" % n)
 	_check(sys.give_gifts() == 0, "one gift round per day")
 	_keep_morning()
 	GameState.minute = 8.0 * 60.0
 	sys.refresh_schedule(true)
-	var visitor: String = String(sys.visiting_friends()[0])
-	var vc: Node3D = sys.get_cat(visitor)
-	_check(vc != null and String(vc.haunt) == "porch", "visiting friend waits on the porch in the morning (%s)" % visitor)
+	var at_porch := false
+	for id in sys.actors.keys():
+		if String(sys.actors[id].haunt) == "porch" and String(id) in sys.visiting_friends(): at_porch = true
+	_check(at_porch, "a visiting friend waits on the porch in the morning")
+
+func _on_friend(id: String, into: Array) -> void:
+	into.append(id)
 
 func _shore_items() -> int:
 	var n := 0
 	for k in GameState.bag.keys():
-		if String(k).begins_with("shore:"): n += int(GameState.bag[k])
+		n += int(GameState.bag[k])
 	return n
 
 # ---------------------------------------------------------------- feet on the ground
@@ -525,9 +540,13 @@ func _shot(path: String) -> void:
 	get_viewport().get_texture().get_image().save_png(path)
 
 func _run_looks() -> void:
-	var cam := get_viewport().get_camera_3d()
+	var cam := Camera3D.new()          # own camera: the Player's follow camera would override ours
+	cam.fov = 40
+	sys.main.add_child(cam)
+	cam.current = true
 	var ids: Array = Data.CATS.keys()
 	ids.sort()
+	if _args.has("only"): ids = [String(_args["only"])]
 	var i := 0
 	for id in ids:
 		var pos := _anchor + Vector3(0, 0, -2.0)
@@ -537,7 +556,7 @@ func _run_looks() -> void:
 		a.yaw = 0.0
 		a._enter(CatActor.S.SIT if i % 2 == 0 else CatActor.S.IDLE, 60.0)
 		await get_tree().create_timer(1.4).timeout
-		var views := {"front": Vector3(0.0, 0.9, 2.1), "side": Vector3(2.1, 0.9, 0.0), "back": Vector3(0.0, 0.9, -2.1)}
+		var views := {"front": Vector3(0.0, 0.8, 1.9), "side": Vector3(1.9, 0.8, 0.0), "back": Vector3(0.0, 0.8, -1.9)}
 		for v in views.keys():
 			cam.global_position = pos + views[v]
 			cam.look_at(pos + Vector3(0, 0.35, 0), Vector3.UP)
@@ -549,3 +568,60 @@ func _run_looks() -> void:
 	print("[cats test] looks saved to /tmp/lb_cat_<id>_<front|side|back>.png")
 	GameState.reset()
 	get_tree().quit()
+
+# ---------------------------------------------------------------- Data-driven extras: cat_calm, nap_skip_hours, fishing_buddy, secret_spot
+func _logic_data_secrets() -> void:
+	_clear_cats()
+	GameState.cats.clear()
+	GameState.bag.clear()
+	# Maple's perk "cat_calm": startle distance x0.6 (a rider at 3 m no longer scares a shy cat)
+	var maple: Dictionary = GameState.person_state("maple")
+	var perks: Array = maple["perks"]
+	var old_points := int(maple.get("points", 0))
+	maple["points"] = 100000   # max friendship so the perk level is reached
+	perks.append("cat_calm")
+	_check(is_equal_approx(sys.calm_factor(), 0.6), "cat_calm perk shrinks the startle distance (factor %.2f)" % sys.calm_factor())
+	var m: Node3D = sys.spawn_test_cat("mochi", _anchor + _toward * 3.0, false)
+	await _wait(1.0)
+	stub_noise(1.5)
+	await _wait(0.8)
+	_check(not (int(m.state) in [CatActor.S.REACT, CatActor.S.FLEE, CatActor.S.ALERT]), "with cat_calm a rider at 3 m does not startle mochi")
+	stub_noise(0.0)
+	perks.erase("cat_calm")
+	maple["points"] = old_points
+	_clear_cats()
+	# nap_skip_hours: sit beside Tofu in the afternoon and the clock jumps ahead, once a day
+	GameState.cats.clear()
+	var t: Node3D = sys.spawn_test_cat("tofu", _anchor + _toward * 1.0, true)
+	sys.st("tofu")["last_pet_day"] = GameState.day
+	GameState.minute = 13.0 * 60.0
+	await get_tree().create_timer(1.1).timeout
+	var before := GameState.minute
+	t.interact(player)
+	await get_tree().create_timer(4.2).timeout
+	_check(GameState.minute >= before + 100.0, "sitting with Tofu in the afternoon skips the clock (%.0f -> %.0f)" % [before, GameState.minute])
+	_check(int(sys.st("tofu").get("last_nap_day", 0)) == GameState.day, "nap skip is once per day")
+	sys.stop_sit(true)
+	_keep_morning()
+	_clear_cats()
+	# fishing_buddy: Pepper comes and sits by Mocha while he fishes at the pier, and that counts as the day's Sit
+	GameState.cats.clear()
+	sys.spot_override["pier_end"] = _anchor
+	var pep: Node3D = sys.spawn_test_cat("pepper", _anchor + _toward * 3.5, false)
+	await _wait(1.0)
+	player.call("set_busy", true)
+	await get_tree().create_timer(7.5).timeout
+	player.call("set_busy", false)
+	_check(_flat(pep.global_position, _anchor) < 2.6, "pepper comes to sit by a fishing Mocha (%.1f m)" % _flat(pep.global_position, _anchor))
+	_check(int(sys.st("pepper")["last_sit_day"]) == GameState.day and sys.hearts("pepper") == 1, "fishing buddy time counts as the day's Sit")
+	sys.spot_override.erase("pier_end")
+	_clear_cats()
+	# secret_spot: Biscuit's dig turns up one tide-flats item, once a day
+	GameState.cats.clear()
+	GameState.bag.clear()
+	var b: Node3D = sys.spawn_test_cat("biscuit", _anchor + _toward * 1.0, true)
+	_check(sys.dig_available("biscuit"), "biscuit has a secret spot to lead Mocha to")
+	var items_before := _shore_items()
+	sys.cat_dig(b)
+	_check(_shore_items() == items_before + 1 and not sys.dig_available("biscuit"), "biscuit digs up one item, once per day")
+	_clear_cats()

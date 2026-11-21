@@ -23,6 +23,23 @@ static func set_mods(disc: float, gold: float, sell := 0.0, special := 0.0, req_
 static func gold_mult() -> int:
 	return maxi(1, Dat.i("GOLD_PRICE_MULT", 5))
 
+# ------------------------------------------------------------------ night market
+const NIGHT_FROM := 21.0         # hour the market opens (GDD 5.4: 21:00-24:00, once the hill lantern is lit)
+const NIGHT_ITEMS := ["shore:star_stone", "shore:moon_shell"]
+
+static func night_mult() -> float:
+	return maxf(1.0, Dat.f("NIGHT_MARKET_MULT", 1.5))
+
+## True from 21:00 to midnight after the hill lantern is lit.
+static func night_market_open() -> bool:
+	return GameState.lanterns.has("hill") and GameState.hour() >= NIGHT_FROM
+
+## Rare fish (rarity 3+), star stones, moon shells and anything gold pay the night market bonus.
+static func night_item(kind: String, id: String, gold: bool) -> bool:
+	if gold: return true
+	if kind == "fish": return int(Dat.entry("FISH", id).get("rarity", 1)) >= 3
+	return (kind + ":" + id) in NIGHT_ITEMS
+
 # ------------------------------------------------------------------ keys
 static func is_gold(key: String) -> bool:
 	return (key.ends_with(":gold") or key.ends_with("_gold")) and (key.begins_with("fish:") or key.begins_with("shore:"))
@@ -120,6 +137,9 @@ static func describe(key: String) -> Dictionary:
 		out.c1 = Color("f2c14e"); out.c2 = Color("c9902c")
 		base *= 1.0 + gold_bonus
 	base *= 1.0 + sell_bonus
+	if base > 0.0 and night_market_open() and night_item(kind, id, gold):
+		base *= night_mult()
+		out["night"] = true
 	out.price = int(round(base))
 	return out
 

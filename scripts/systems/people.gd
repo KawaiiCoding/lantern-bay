@@ -11,6 +11,7 @@ extends Node
 const PersonScr := preload("res://scripts/systems/people/person.gd")
 const FallbackScr := preload("res://scripts/systems/people/people_data.gd")
 const DialogueScr := preload("res://scripts/ui/dialogue.gd")
+const BasketScr := preload("res://scripts/systems/town/basket.gd")
 
 ## Used when a perk entry carries no "value".
 const DEFAULT_PERK_VALUES := {
@@ -22,8 +23,8 @@ const PERK_ALIASES := {
 	"bite_window_bonus": "bite_window", "shore_gold_bonus": "shore_gold", "gold_sell_bonus": "gold_bonus",
 	"forecast": "fish_forecast", "rare_fish_bonus": "rare_bonus",
 }
-## Daily perk gifts: perk id -> item. The perk value is the interval in days (default 1).
-const PERK_GIFTS := {"daily_flower": "flower:sea_pink", "catnip_gift": "treat:catnip", "moonflower": "flower:moonflower"}
+## Gift perks (Fern): perk id -> item. They fill the basket by the board (town/basket.gd); the perk value is the interval in days.
+const PERK_GIFTS := BasketScr.GIFTS
 ## How each person dresses (data may override with "outfit" / "scale").
 const LOOKS := {
 	"pip": {"outfit": "apron", "scale": 0.9}, "maple": {"outfit": "smock", "scale": 0.95},
@@ -624,16 +625,16 @@ func _morning(_from_signal: bool) -> void:
 	_perk_gifts()
 	GameState.save_soon()
 
+## Fern's basket by the board: each gift perk adds its item once per period (the perk value is the number of days).
 func _perk_gifts() -> void:
+	var who := ""
 	for perk in PERK_GIFTS.keys():
-		for raw in people().keys():
-			var id := str(raw)
-			if not GameState.has_perk(id, perk): continue
-			var every := maxi(1, int(round(float(perk_value(perk, 1.0)))))
-			if GameState.day % every != 0: continue
-			var item: String = PERK_GIFTS[perk]
-			GameState.add_item(item)
-			GameState.say("%s left you a %s." % [person_name(id), item_name(item)])
+		var id := BasketScr.holder(str(perk))
+		if id == "": continue
+		var every := maxi(1, int(round(float(perk_value(str(perk), 1.0)))))
+		if BasketScr.put_if_due(str(perk), every): who = id
+	if who != "" and BasketScr.first_time():
+		GameState.say("%s left something in the basket by the board." % person_name(who))
 
 ## Today's forecast from whoever holds fish_forecast (Captain Moss). Stores flags.forecast_fish.
 func _forecast() -> void:

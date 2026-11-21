@@ -27,14 +27,11 @@ const TEST_PATH := "res://scripts/systems/cats/cats_test.gd"
 
 const MAX_OUT := 4                 # cats on the island at once (daytime)
 const MAX_OUT_NIGHT := 3
-const PORCH_CHANCE := 0.4          # chance a friend cat visits the porch (and leaves a gift) on a given morning
-const PORCH_MAX_PER_DAY := 1
 const SPAWN_CLEAR := 4.5           # no cat homes this close to the spawn point (the porch is exempt: friends visit it)
 const PLAYER_CLEAR := 6.0          # nor this close to Mocha when the cast changes
 const HOME_SEPARATION := 4.0       # distance between two cats' homes
 const HOME_RINGS := [0.0, 0.9, 1.5, 2.2, 3.0, 4.0, 5.5]   # search rings (m) around a haunt spot, spot itself first
 const AMBIENT_RANGE := 3.2         # the nearest cat inside this shows its name (or what it wants) in the bubble
-const SIT_INVITE_EVERY := 6.0      # GDD: every 6 s a nearby cat may wander closer while Mocha sits
 const SIT_NEAR := 1.7
 const INVITE_CHANCE := {"Bold": 0.8, "Curious": 0.7, "Lazy": 0.45, "Shy": 0.3, "Grumpy": 0.25}
 const WRONG_HINTS := {
@@ -51,6 +48,7 @@ var sit_time := 0.0
 var sit_reward_time := 4.0         # seconds a cat must stay within reach for the first-sit-of-day heart
 var test_mode := false             # tests spawn their own cats and skip the schedule
 var spot_override := {}            # tests only: spot name -> Vector3 when there is no island
+var spot_hidden := {}               # tests only: spots to treat as unknown
 var noise_override := -1.0         # tests only: pretend Mocha makes this much noise (>= 0)
 var ambient_id := ""               # the one cat (nearest to Mocha) allowed an ambient bubble
 
@@ -103,6 +101,7 @@ func _process(dt: float) -> void:
 		_tick_pending(dt)
 	_update_ambient(dt)
 	_update_sit(dt)
+	_update_buddy(dt)
 
 # ---------------------------------------------------------------- environment helpers (all null-safe)
 func get_player() -> Node3D:
@@ -121,6 +120,7 @@ func _island() -> Node:
 
 ## A spot counts as known only when the island answers with a real position (never the origin fallback).
 func spot_known(spot_name: String) -> bool:
+	if spot_hidden.has(spot_name): return false
 	if spot_override.has(spot_name): return true
 	if _island() == null or not main.has_method("spot"): return false
 	var v = main.spot(spot_name)
@@ -142,6 +142,7 @@ func ground_y(x: float, z: float, fallback := 0.0) -> float:
 
 ## Land only: walkable and not in the shallows. Without an island everything is walkable (tests).
 func is_walkable(p: Vector3) -> bool:
+	if test_mode: return true   # unit tests check rules, not terrain
 	var isl := _island()
 	if isl == null: return true
 	if isl.has_method("is_walkable") and not bool(isl.is_walkable(p)): return false
@@ -150,7 +151,7 @@ func is_walkable(p: Vector3) -> bool:
 
 ## True when something solid (a prop, a wall, a tree) is where a cat would stand.
 func prop_blocked(p: Vector3) -> bool:
-	if not (main is Node3D) or not is_instance_valid(main): return false
+	if test_mode or not (main is Node3D) or not is_instance_valid(main): return false
 	var w: World3D = (main as Node3D).get_world_3d()
 	if w == null: return false
 	var space := w.direct_space_state
@@ -170,7 +171,7 @@ func prop_blocked(p: Vector3) -> bool:
 
 ## True when a straight walk from a to b stays on land (always true without an island).
 func path_clear(a: Vector3, b: Vector3) -> bool:
-	if _island() == null: return true
+	if test_mode or _island() == null: return true
 	var d := Vector2(b.x - a.x, b.z - a.z).length()
 	var steps := maxi(1, int(ceil(d / 0.8)))
 	for i in range(1, steps + 1):
@@ -203,6 +204,24 @@ func cur_weather() -> String:
 		_wday = GameState.day
 		_wcache = GameState.weather()
 	return _wcache
+
+## Tunable from Data (design director): Data.<name> if present, else the default.
+func dc(const_name: String, default):
+	var v = Data.get(const_name)
+	return v if v != null else default
+
+## Maple's perk "cat_calm" (value 0.6): cats only startle from that fraction of the usual distance.
+func calm_factor() -> float:
+	var people = null
+	if is_instance_valid(main):
+		var sysd = main.get("systems")
+		if typeof(sysd) == TYPE_DICTIONARY: people = (sysd as Dictionary).get("people", null)
+	if is_instance_valid(people) and people.has_method("perk_value"):
+		var v = people.perk_value("cat_calm", 1.0)
+		if v != null and float(v) > 0.0: return clampf(float(v), 0.2, 1.0)
+		return 1.0
+	if GameState.has_method("has_perk") and GameState.has_perk("maple", "cat_calm"): return 0.6
+	return 1.0
 
 func max_hearts() -> int:
 	var v = Data.get("CAT_MAX_HEARTS")
@@ -262,6 +281,13 @@ func present_ids() -> Array:
 func add_hearts(id: String, n: int, _why := "") -> int:
 	var s := st(id)
 	var before := int(s["hearts"])
+	if n > 0 and _why != "":
+		# Data.CAT_DAILY_HEART_CAP: pet +1, sit +1, treat +2, but never more than this per cat per day
+		var cap := int(dc("CAT_DAILY_HEART_CAP", 99))
+		var gained := int(s.get("gain", 0)) if int(s.get("gain_day", 0)) == GameState.day else 0
+		n = clampi(mini(n, cap - gained), 0, n)
+		s["gain"] = gained + n
+		s["gain_day"] = GameState.day
 	var after := clampi(before + n, 0, max_hearts())
 	s["hearts"] = after
 	var a = get_cat(id)
@@ -447,7 +473,7 @@ func _update_sit(dt: float) -> void:
 	if GameState.paused: return
 	sit_time += dt
 	_sit_tick += dt
-	if _sit_tick >= SIT_INVITE_EVERY:
+	if _sit_tick >= float(dc("CAT_SIT_TICK", 6.0)):
 		_sit_tick = 0.0
 		_invite_cat(p)
 	for a in actors.values():
@@ -456,6 +482,82 @@ func _update_sit(dt: float) -> void:
 		if d <= SIT_NEAR: a.near_sit_time += dt
 		if a.near_sit_time >= sit_reward_time and not a.sit_credited:
 			_sit_credit(a)
+		# data nap_skip_hours: sitting beside it in the afternoon, you both doze and the clock jumps ahead (once a day)
+		if a.near_sit_time >= sit_reward_time + 1.5 and int(_cdata(String(a.cat_id)).get("nap_skip_hours", 0)) > 0:
+			_nap_skip(a)
+
+func _nap_skip(a: Node3D) -> void:
+	var id := String(a.cat_id)
+	var hours := int(_cdata(id).get("nap_skip_hours", 0))
+	var s := st(id)
+	if hours <= 0 or cur_slot() != "afternoon" or int(s.get("last_nap_day", 0)) == GameState.day: return
+	s["last_nap_day"] = GameState.day
+	a.nap_now()
+	learn(id, "secret", true)
+	GameState.minute = minf(GameState.minute + float(hours) * 60.0, 22.5 * 60.0)   # never skips past the evening
+	GameState.say("You both doze off for a while.")
+	_save()
+
+## data fishing_buddy: while Mocha fishes at the pier, this cat (if out and near) comes and sits by him.
+## Staying beside him for a few seconds counts as that day's Sit.
+func _update_buddy(dt: float) -> void:
+	var p := get_player()
+	if p == null or not bool(p.get("busy")) or sit_active: return
+	var at_pier := false
+	for sp in ["pier_end", "pier"]:
+		if spot_known(sp) and Vector2(p.global_position.x - spot_pos(sp).x, p.global_position.z - spot_pos(sp).z).length() < 6.0: at_pier = true
+	if not at_pier: return
+	for a in actors.values():
+		if not is_instance_valid(a) or not a.available() or not bool(_cdata(String(a.cat_id)).get("fishing_buddy", false)): continue
+		var d := Vector2(a.global_position.x - p.global_position.x, a.global_position.z - p.global_position.z).length()
+		if d > 14.0: continue
+		if d > 2.4:
+			a.buddy_t = 0.0
+			if a.state != a.S.TRAVEL: a.come_close(p.global_position, 1.6)
+		else:
+			a.buddy_t += dt
+			if a.buddy_t >= 4.0 and not a.sit_credited:
+				_sit_credit(a)
+
+## data secret_spot: where the Mackerel follow leads. Returns a standing point near that spot, or Vector3.INF.
+func dig_point(spot: String) -> Vector3:
+	if not spot_known(spot): return Vector3.INF
+	var base := spot_pos(spot)
+	for ring in HOME_RINGS:
+		var steps := 1 if float(ring) == 0.0 else 8
+		for i in steps:
+			var ang := float(i) * TAU / float(steps)
+			var q := base + Vector3(cos(ang), 0, sin(ang)) * float(ring)
+			q.y = ground_y(q.x, q.z, base.y)
+			if is_walkable(q) and not prop_blocked(q): return q
+	return Vector3.INF
+
+func dig_available(id: String) -> bool:
+	var spot := String(_cdata(id).get("secret_spot", ""))
+	return spot != "" and int(_peek(id).get("last_dig_day", 0)) != GameState.day and dig_point(spot) != Vector3.INF
+
+## The cat has led Mocha to its secret spot and digs up one tide-flats item (once per day).
+func cat_dig(a: Node3D) -> void:
+	var id := String(a.cat_id)
+	st(id)["last_dig_day"] = GameState.day
+	var pool := []
+	var total := 0.0
+	for k in Data.SHORE.keys():
+		var it = Data.SHORE[k]
+		if typeof(it) != TYPE_DICTIONARY or String(it.get("where", "")) != "flats": continue
+		var w := maxf(0.1, float(it.get("weight", 1)))
+		pool.append([String(k), w])
+		total += w
+	if pool.is_empty(): return
+	var r := _rng.randf() * total
+	var pick: String = String(pool[0][0])
+	for e in pool:
+		r -= float(e[1])
+		if r <= 0.0:
+			pick = String(e[0]); break
+	GameState.add_item("shore:" + pick, 1)
+	GameState.say("%s dug up %s." % [bubble_name(id), item_name("shore:" + pick)])
+	_save()
 
 ## GDD: every 6 s a nearby cat may wander closer. At most one extra cat joins (never a crowd around Mocha).
 func _invite_cat(p: Node3D) -> void:
@@ -465,7 +567,7 @@ func _invite_cat(p: Node3D) -> void:
 	for a in actors.values():
 		if not is_instance_valid(a) or not a.available() or a == sit_actor: continue
 		var d := Vector2(a.global_position.x - p.global_position.x, a.global_position.z - p.global_position.z).length()
-		if d <= 8.0 and d < bd:
+		if d <= 5.0 and d < bd:
 			bd = d
 			best = a
 	if best != null and _rng.randf() < float(INVITE_CHANCE.get(best.personality, 0.5)):
@@ -504,6 +606,9 @@ func schedule_spot(id: String, slot := "", weather := "") -> String:
 		spot = "porch"
 	return spot
 
+func _porch_chance() -> float: return float(dc("CAT_GIFT_CHANCE", 0.4))
+func _porch_max() -> int: return int(dc("CAT_GIFTS_PER_MORNING", 1))
+
 func _visit_roll(id: String) -> float:
 	return GameState.day_rng(int(absi(id.hash()) % 9973) + 313).randf()
 
@@ -513,15 +618,22 @@ func visiting_friends(weather := "") -> Array:
 	var out := []
 	for id in Data.CATS.keys():
 		var cid := String(id)
-		if not is_friend(cid) or _visit_roll(cid) >= PORCH_CHANCE: continue
+		if not is_friend(cid) or _visit_roll(cid) >= _porch_chance(): continue
 		var c := _cdata(cid)
 		var wo = c.get("weather_only", [])
 		if typeof(wo) == TYPE_ARRAY and not wo.is_empty() and not (weather in wo): continue
 		var nl := String(c.get("needs_lantern", ""))
 		if nl != "" and not GameState.lanterns.has(nl): continue
 		out.append(cid)
-	out.sort_custom(func(a, b): return _visit_roll(String(a)) < _visit_roll(String(b)))
-	return out.slice(0, PORCH_MAX_PER_DAY)
+	out.sort_custom(_cmp_visit)
+	return out.slice(0, _porch_max())
+
+func _cmp_visit(a, b) -> bool:
+	return _visit_roll(String(a)) < _visit_roll(String(b))
+
+func _cmp_cand(a, b) -> bool:
+	if int(a["pri"]) != int(b["pri"]): return int(a["pri"]) < int(b["pri"])
+	return int(a["order"]) < int(b["order"])
 
 func _is_special(id: String, weather: String) -> bool:
 	var c := _cdata(id)
@@ -540,15 +652,17 @@ func lineup(slot := "", weather := "") -> Dictionary:
 	if slot == "": slot = cur_slot()
 	if weather == "": weather = cur_weather()
 	var cands := []
+	var order := 0
 	for id in Data.CATS.keys():
 		var cid := String(id)
+		order += 1
 		var spot := schedule_spot(cid, slot, weather)
 		if spot == "": continue
 		var pri := 2
 		if spot == "porch" and cid in visiting_friends(weather): pri = 0
 		elif _is_special(cid, weather): pri = 1
-		cands.append({"id": cid, "spot": spot, "pri": pri, "k": _day_key(cid)})
-	cands.sort_custom(func(a, b): return int(a["pri"]) < int(b["pri"]) or (int(a["pri"]) == int(b["pri"]) and int(a["k"]) < int(b["k"])))
+		cands.append({"id": cid, "spot": spot, "pri": pri, "order": order})
+	cands.sort_custom(_cmp_cand)   # porch visitor, then rare cats (weather, lantern), then Data order: deterministic
 	var cap := MAX_OUT_NIGHT if slot == "night" else MAX_OUT
 	var out := {}
 	var used_spots := []
@@ -587,10 +701,12 @@ func find_home(id: String, spot: String, taken: Array, keep := Vector3.INF) -> V
 
 func _home_ok(p: Vector3, spot: String, taken: Array) -> bool:
 	if not is_walkable(p) or prop_blocked(p): return false
-	if spot != "porch":
-		if spot_known("spawn") and Vector2(p.x - spot_pos("spawn").x, p.z - spot_pos("spawn").z).length() < SPAWN_CLEAR: return false
-		var pl := get_player()
-		if pl != null and Vector2(p.x - pl.global_position.x, p.z - pl.global_position.z).length() < PLAYER_CLEAR: return false
+	var near_home := spot == "porch" or spot == "home"   # Mocha's own doorstep: keep a small gap instead of a big one
+	var spawn_gap := 2.5 if near_home else SPAWN_CLEAR
+	var player_gap := 2.5 if near_home else PLAYER_CLEAR
+	if spot_known("spawn") and Vector2(p.x - spot_pos("spawn").x, p.z - spot_pos("spawn").z).length() < spawn_gap: return false
+	var pl := get_player()
+	if pl != null and Vector2(p.x - pl.global_position.x, p.z - pl.global_position.z).length() < player_gap: return false
 	for t in taken:
 		if Vector2(p.x - t.x, p.z - t.z).length() < HOME_SEPARATION: return false
 	return true
@@ -700,6 +816,14 @@ func give_gifts() -> int:
 	GameState.flags["cat_gift_day"] = GameState.day
 	var given := 0
 	for id in visiting_friends():
+		var rng := GameState.day_rng(int(absi(String(id).hash()) % 6151) + 5003)
+		var yen = dc("CAT_GIFT_YEN", [])
+		if typeof(yen) == TYPE_ARRAY and (yen as Array).size() >= 2 and rng.randf() < 0.25:
+			var amount := rng.randi_range(int((yen as Array)[0]), int((yen as Array)[1]))
+			GameState.add_coins(amount)
+			GameState.say("%s left a folded note on the porch." % bubble_name(String(id)))
+			given += 1
+			continue
 		var item := _pick_gift(String(id))
 		if item == "": continue
 		var key := item if item.contains(":") else "shore:" + item

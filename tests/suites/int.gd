@@ -312,6 +312,7 @@ func t_22_player_ride_toggle() -> void:
 	reset_world()
 	await r.ensure_main()
 	if not _need(["island", "player"]): return
+	GameState.flags["moped_unlocked"] = true   # Pip lends the moped on day 2; unlock it for this test
 	var p: CharacterBody3D = r.part("player")
 	var sp = _spot("spawn")
 	if sp != Vector3.ZERO: _teleport(p, sp + Vector3(0, 0.1, 0))
