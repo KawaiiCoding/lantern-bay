@@ -144,6 +144,9 @@ func _ready() -> void:
 	_test = args.get("test", "") == "player"
 	if _test: _demo = args.get("demo", "walk")
 	if args.get("test", "") == "walkabout": _wa = {"on": true, "step": float(args.get("step", "2.5")), "off": float(args.get("off", "0"))}
+		if args.has("near"):   # e.g. near=2,5: only grid points around one spot (debugging a stuck report)
+			var nv: PackedStringArray = str(args["near"]).split(",")
+			if nv.size() == 2: _wa["near"] = Vector2(float(nv[0]), float(nv[1]))
 
 ## Collect the tagged parts of a Shiba (meta "part") that we animate.
 func _scan_bear(b: Node3D, _with_limbs := true) -> void:
@@ -515,6 +518,7 @@ func _unstick(want: Vector3, dt: float) -> void:
 			lean = tan.dot(off) if off.length() > 0.001 else 1.0
 		_nudge_side = 1.0 if lean >= 0.0 else -1.0
 	_nudge = tan * _nudge_side * wl * 0.9
+	if not _wa.is_empty() and _wa.has("near"): print("[walkabout] nudge n=", n, " tan=", tan * _nudge_side, " real=", get_real_velocity(), " pos=", global_position)
 
 func _small_obstacle(c: KinematicCollision3D) -> bool:
 	var col := c.get_collider()
@@ -904,7 +908,7 @@ func _walkabout_begin() -> void:
 			var z := -60.0 + off
 			while z <= 60.0:
 				var p := Vector3(x, 0, z)
-				if isl.is_walkable(p): pts.append(p)
+				if isl.is_walkable(p) and (not _wa.has("near") or Vector2(p.x, p.z).distance_to(_wa["near"]) < 1.6): pts.append(p)
 				z += st
 			x += st
 	_wa["pts"] = pts; _wa["i"] = 0; _wa["d"] = 0; _wa["t"] = -1.0; _wa["stuck"] = []; _wa["air"] = {}; _wa["runs"] = 0; _wa["open"] = 0
